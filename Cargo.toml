@@ -1,0 +1,31 @@
+[package]
+name = "labpeep"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# TUI
+ratatui = "0.28"
+crossterm = "0.28"
+
+# Async & HTTP
+tokio = { version = "1.41", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+
+# Utilities
+dirs = "5.0"
+anyhow = "1.0"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+git2 = "0.19"
+url = "2.5"
+
+[dev-dependencies]
+mockito = "1.5"
+tempfile = "3.8"
+tokio-test = "0.4"

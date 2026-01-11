@@ -1,0 +1,40 @@
+[gitlab]
+# Your GitLab personal access token (requires 'read_api' scope)
+# Get it from: GitLab → User Settings → Access Tokens
+token = "glpat-xxxxxxxxxxxxxxxxxxxx"
+
+# The project ID you want to monitor (OPTIONAL)
+# If omitted, labpeep will auto-detect it from your git remote!
+# Find it on your project's main page below the project name
+# default_project_id = 12345
+
+# GitLab instance URL (defaults to gitlab.com)
+# Change this if you're using a self-hosted GitLab instance
+instance_url = "https://gitlab.com"
+
+[app]
+# Auto-refresh interval in seconds (default: 30)
+refresh_interval = 30
+
+# Maximum number of MRs to track simultaneously (default: 5)
+max_tracked_mrs = 5
+
+# Focus on MR for current git branch only (default: true)
+# When true, only shows the MR associated with your current branch
+# When false, shows all open MRs
+focus_current_branch = true
+
+[ui]
+# Show timestamps in relative format like "2 hours ago" (default: true)
+relative_timestamps = true
+
+# Color theme: "dark" or "light" (default: "dark")
+theme = "dark"
+
+[editor]
+# Override $EDITOR environment variable if needed
+# If not set, uses $EDITOR, $VISUAL, or falls back to vim
+# Uncomment and set your preferred editor:
+# custom_editor = "nvim"
+# custom_editor = "code --wait"
+# custom_editor = "emacs"

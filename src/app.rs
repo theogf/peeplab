@@ -1,0 +1,589 @@
+use crate::events::actions::{Action, Effect};
+use crate::gitlab::{Job, MergeRequest, Pipeline};
+use std::collections::HashMap;
+
+pub struct App {
+    // UI State
+    pub should_quit: bool,
+    pub selected_mr_index: usize,
+    pub selected_job_index: usize,
+
+    // Data State
+    pub tracked_mrs: Vec<TrackedMergeRequest>,
+    pub project_id: u64,
+    pub current_branch: Option<String>,
+    pub focus_current_branch: bool,
+
+    // UI Modes
+    pub mode: AppMode,
+
+    // Status
+    pub status_message: Option<String>,
+    pub error_message: Option<String>,
+    pub last_refresh: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TrackedMergeRequest {
+    pub mr: MergeRequest,
+    pub pipelines: Vec<Pipeline>,
+    pub jobs: HashMap<u64, Vec<Job>>, // pipeline_id -> jobs
+    pub selected_pipeline_index: usize,
+    pub loading: bool,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AppMode {
+    Normal,      // Viewing MRs and jobs
+    SelectingMr, // MR selection dialog
+    ShowingHelp, // Help popup visible
+}
+
+impl App {
+    pub fn new(project_id: u64, current_branch: Option<String>, focus_current_branch: bool) -> Self {
+        let status_message = if focus_current_branch && current_branch.is_some() {
+            Some(format!("Loading MR for branch '{}'...", current_branch.as_ref().unwrap()))
+        } else {
+            Some("Loading merge requests...".to_string())
+        };
+
+        Self {
+            should_quit: false,
+            selected_mr_index: 0,
+            selected_job_index: 0,
+            tracked_mrs: Vec::new(),
+            project_id,
+            current_branch,
+            focus_current_branch,
+            mode: AppMode::Normal,
+            status_message,
+            error_message: None,
+            last_refresh: None,
+        }
+    }
+
+    pub fn get_selected_mr(&self) -> Option<&TrackedMergeRequest> {
+        self.tracked_mrs.get(self.selected_mr_index)
+    }
+
+    pub fn get_selected_mr_mut(&mut self) -> Option<&mut TrackedMergeRequest> {
+        self.tracked_mrs.get_mut(self.selected_mr_index)
+    }
+
+    pub fn get_selected_pipeline(&self) -> Option<&Pipeline> {
+        self.get_selected_mr()
+            .and_then(|mr| mr.pipelines.get(mr.selected_pipeline_index))
+    }
+
+    pub fn get_selected_jobs(&self) -> Option<&[Job]> {
+        if let Some(mr) = self.get_selected_mr() {
+            if let Some(pipeline) = mr.pipelines.get(mr.selected_pipeline_index) {
+                return mr.jobs.get(&pipeline.id).map(|jobs| jobs.as_slice());
+            }
+        }
+        None
+    }
+
+    pub fn update(&mut self, action: Action) -> Option<Effect> {
+        match action {
+            Action::Quit => {
+                self.should_quit = true;
+                None
+            }
+
+            Action::NextMr => {
+                if !self.tracked_mrs.is_empty() {
+                    self.selected_mr_index = (self.selected_mr_index + 1) % self.tracked_mrs.len();
+                    self.selected_job_index = 0;
+                }
+                None
+            }
+
+            Action::PrevMr => {
+                if !self.tracked_mrs.is_empty() {
+                    self.selected_mr_index = self
+                        .selected_mr_index
+                        .checked_sub(1)
+                        .unwrap_or(self.tracked_mrs.len() - 1);
+                    self.selected_job_index = 0;
+                }
+                None
+            }
+
+            Action::NextJob => {
+                if let Some(jobs) = self.get_selected_jobs() {
+                    if !jobs.is_empty() {
+                        self.selected_job_index = (self.selected_job_index + 1) % jobs.len();
+                    }
+                }
+                None
+            }
+
+            Action::PrevJob => {
+                if let Some(jobs) = self.get_selected_jobs() {
+                    if !jobs.is_empty() {
+                        self.selected_job_index = self
+                            .selected_job_index
+                            .checked_sub(1)
+                            .unwrap_or(jobs.len() - 1);
+                    }
+                }
+                None
+            }
+
+            Action::NextPipeline => {
+                if let Some(mr) = self.get_selected_mr_mut() {
+                    if !mr.pipelines.is_empty() {
+                        mr.selected_pipeline_index =
+                            (mr.selected_pipeline_index + 1) % mr.pipelines.len();
+                        self.selected_job_index = 0;
+                    }
+                }
+                None
+            }
+
+            Action::PrevPipeline => {
+                if let Some(mr) = self.get_selected_mr_mut() {
+                    if !mr.pipelines.is_empty() {
+                        mr.selected_pipeline_index = mr
+                            .selected_pipeline_index
+                            .checked_sub(1)
+                            .unwrap_or(mr.pipelines.len() - 1);
+                        self.selected_job_index = 0;
+                    }
+                }
+                None
+            }
+
+            Action::OpenSelectedJobLog => {
+                let job_info = self.get_selected_jobs()
+                    .and_then(|jobs| jobs.get(self.selected_job_index))
+                    .map(|job| (job.name.clone(), job.id));
+
+                if let Some((job_name, job_id)) = job_info {
+                    self.status_message = Some(format!("Fetching log for job '{}'...", job_name));
+                    return Some(Effect::FetchJobTrace {
+                        project_id: self.project_id,
+                        job_id,
+                    });
+                }
+                None
+            }
+
+            Action::Refresh => {
+                self.status_message = Some("Refreshing...".to_string());
+                Some(Effect::RefreshAll {
+                    project_id: self.project_id,
+                    source_branch: if self.focus_current_branch {
+                        self.current_branch.clone()
+                    } else {
+                        None
+                    },
+                })
+            }
+
+            Action::RemoveCurrentMr => {
+                if !self.tracked_mrs.is_empty() {
+                    self.tracked_mrs.remove(self.selected_mr_index);
+                    if self.selected_mr_index > 0 {
+                        self.selected_mr_index -= 1;
+                    }
+                    self.selected_job_index = 0;
+                }
+                None
+            }
+
+            Action::MergeRequestsLoaded(mrs) => {
+                // Initialize tracked MRs with the loaded data
+                for mr in mrs {
+                    if !self.tracked_mrs.iter().any(|tmr| tmr.mr.iid == mr.iid) {
+                        let tracked_mr = TrackedMergeRequest {
+                            mr: mr.clone(),
+                            pipelines: Vec::new(),
+                            jobs: HashMap::new(),
+                            selected_pipeline_index: 0,
+                            loading: true,
+                            error: None,
+                        };
+                        self.tracked_mrs.push(tracked_mr);
+                    }
+                }
+
+                self.status_message = Some(format!("Loaded {} merge requests", self.tracked_mrs.len()));
+
+                // Fetch pipelines for each MR
+                let effects: Vec<Effect> = self
+                    .tracked_mrs
+                    .iter()
+                    .enumerate()
+                    .map(|(index, tmr)| Effect::FetchPipelines {
+                        mr_index: index,
+                        project_id: self.project_id,
+                        mr_iid: tmr.mr.iid,
+                    })
+                    .collect();
+
+                // Return the first effect; in a real implementation, we'd handle multiple
+                effects.into_iter().next()
+            }
+
+            Action::PipelinesLoaded { mr_index, pipelines } => {
+                if let Some(mr) = self.tracked_mrs.get_mut(mr_index) {
+                    mr.pipelines = pipelines;
+                    mr.loading = false;
+
+                    // Fetch jobs for the latest pipeline
+                    if let Some(pipeline) = mr.pipelines.first() {
+                        return Some(Effect::FetchJobs {
+                            mr_index,
+                            project_id: self.project_id,
+                            pipeline_id: pipeline.id,
+                        });
+                    }
+                }
+                None
+            }
+
+            Action::JobsLoaded {
+                mr_index,
+                pipeline_id,
+                jobs,
+            } => {
+                if let Some(mr) = self.tracked_mrs.get_mut(mr_index) {
+                    mr.jobs.insert(pipeline_id, jobs);
+                }
+                self.last_refresh = Some(chrono::Utc::now());
+                None
+            }
+
+            Action::JobTraceLoaded { trace, .. } => {
+                self.status_message = None;
+                Some(Effect::OpenInEditor(trace))
+            }
+
+            Action::ApiError(error) => {
+                self.error_message = Some(error.clone());
+                self.status_message = None;
+                None
+            }
+
+            Action::ShowHelp => {
+                self.mode = AppMode::ShowingHelp;
+                None
+            }
+
+            Action::HideHelp => {
+                self.mode = AppMode::Normal;
+                None
+            }
+
+            Action::Tick => {
+                // Auto-refresh logic could go here
+                None
+            }
+
+            _ => None,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::gitlab::{JobStatus, PipelineStatus, User};
+    use chrono::Utc;
+
+    fn create_test_mr(id: u64, iid: u64, title: &str) -> MergeRequest {
+        MergeRequest {
+            id,
+            iid,
+            title: title.to_string(),
+            author: User {
+                id: 1,
+                username: "testuser".to_string(),
+                name: "Test User".to_string(),
+            },
+            state: "opened".to_string(),
+            web_url: format!("https://gitlab.com/test/-/merge_requests/{}", iid),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    fn create_test_pipeline(id: u64, status: PipelineStatus) -> Pipeline {
+        Pipeline {
+            id,
+            iid: id,
+            status,
+            ref_name: "main".to_string(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            web_url: format!("https://gitlab.com/test/-/pipelines/{}", id),
+        }
+    }
+
+    fn create_test_job(id: u64, name: &str, status: JobStatus) -> Job {
+        Job {
+            id,
+            name: name.to_string(),
+            status,
+            stage: "test".to_string(),
+            created_at: Utc::now(),
+            started_at: Some(Utc::now()),
+            finished_at: Some(Utc::now()),
+            duration: Some(120.0),
+            web_url: format!("https://gitlab.com/test/-/jobs/{}", id),
+        }
+    }
+
+    #[test]
+    fn test_app_new() {
+        let app = App::new(123, None, false);
+        assert_eq!(app.project_id, 123);
+        assert!(!app.should_quit);
+        assert_eq!(app.selected_mr_index, 0);
+        assert_eq!(app.selected_job_index, 0);
+        assert!(app.tracked_mrs.is_empty());
+        assert_eq!(app.mode, AppMode::Normal);
+    }
+
+    #[test]
+    fn test_quit_action() {
+        let mut app = App::new(123, None, false);
+        assert!(!app.should_quit);
+
+        app.update(Action::Quit);
+        assert!(app.should_quit);
+    }
+
+    #[test]
+    fn test_next_mr() {
+        let mut app = App::new(123, None, false);
+
+        // Add some MRs
+        let mr1 = create_test_mr(1, 10, "MR 1");
+        let mr2 = create_test_mr(2, 20, "MR 2");
+
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr: mr1,
+            pipelines: vec![],
+            jobs: HashMap::new(),
+            selected_pipeline_index: 0,
+            loading: false,
+            error: None,
+        });
+
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr: mr2,
+            pipelines: vec![],
+            jobs: HashMap::new(),
+            selected_pipeline_index: 0,
+            loading: false,
+            error: None,
+        });
+
+        assert_eq!(app.selected_mr_index, 0);
+        app.update(Action::NextMr);
+        assert_eq!(app.selected_mr_index, 1);
+        app.update(Action::NextMr);
+        assert_eq!(app.selected_mr_index, 0); // Wraps around
+    }
+
+    #[test]
+    fn test_prev_mr() {
+        let mut app = App::new(123, None, false);
+
+        let mr1 = create_test_mr(1, 10, "MR 1");
+        let mr2 = create_test_mr(2, 20, "MR 2");
+
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr: mr1,
+            pipelines: vec![],
+            jobs: HashMap::new(),
+            selected_pipeline_index: 0,
+            loading: false,
+            error: None,
+        });
+
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr: mr2,
+            pipelines: vec![],
+            jobs: HashMap::new(),
+            selected_pipeline_index: 0,
+            loading: false,
+            error: None,
+        });
+
+        assert_eq!(app.selected_mr_index, 0);
+        app.update(Action::PrevMr);
+        assert_eq!(app.selected_mr_index, 1); // Wraps around to end
+        app.update(Action::PrevMr);
+        assert_eq!(app.selected_mr_index, 0);
+    }
+
+    #[test]
+    fn test_merge_requests_loaded() {
+        let mut app = App::new(123, None, false);
+
+        let mrs = vec![
+            create_test_mr(1, 10, "MR 1"),
+            create_test_mr(2, 20, "MR 2"),
+        ];
+
+        app.update(Action::MergeRequestsLoaded(mrs));
+        assert_eq!(app.tracked_mrs.len(), 2);
+        assert_eq!(app.tracked_mrs[0].mr.title, "MR 1");
+        assert_eq!(app.tracked_mrs[1].mr.title, "MR 2");
+    }
+
+    #[test]
+    fn test_pipelines_loaded() {
+        let mut app = App::new(123, None, false);
+
+        let mr = create_test_mr(1, 10, "Test MR");
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr,
+            pipelines: vec![],
+            jobs: HashMap::new(),
+            selected_pipeline_index: 0,
+            loading: true,
+            error: None,
+        });
+
+        let pipelines = vec![
+            create_test_pipeline(100, PipelineStatus::Success),
+            create_test_pipeline(101, PipelineStatus::Failed),
+        ];
+
+        app.update(Action::PipelinesLoaded {
+            mr_index: 0,
+            pipelines,
+        });
+
+        assert_eq!(app.tracked_mrs[0].pipelines.len(), 2);
+        assert!(!app.tracked_mrs[0].loading);
+        assert_eq!(app.tracked_mrs[0].pipelines[0].status, PipelineStatus::Success);
+    }
+
+    #[test]
+    fn test_jobs_loaded() {
+        let mut app = App::new(123, None, false);
+
+        let mr = create_test_mr(1, 10, "Test MR");
+        let pipeline = create_test_pipeline(100, PipelineStatus::Running);
+
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr,
+            pipelines: vec![pipeline],
+            jobs: HashMap::new(),
+            selected_pipeline_index: 0,
+            loading: false,
+            error: None,
+        });
+
+        let jobs = vec![
+            create_test_job(200, "build", JobStatus::Success),
+            create_test_job(201, "test", JobStatus::Failed),
+        ];
+
+        app.update(Action::JobsLoaded {
+            mr_index: 0,
+            pipeline_id: 100,
+            jobs,
+        });
+
+        assert!(app.tracked_mrs[0].jobs.contains_key(&100));
+        let loaded_jobs = &app.tracked_mrs[0].jobs[&100];
+        assert_eq!(loaded_jobs.len(), 2);
+        assert_eq!(loaded_jobs[0].name, "build");
+        assert_eq!(loaded_jobs[1].name, "test");
+    }
+
+    #[test]
+    fn test_api_error() {
+        let mut app = App::new(123, None, false);
+
+        app.update(Action::ApiError("Test error".to_string()));
+        assert_eq!(app.error_message, Some("Test error".to_string()));
+        assert!(app.status_message.is_none());
+    }
+
+    #[test]
+    fn test_remove_current_mr() {
+        let mut app = App::new(123, None, false);
+
+        let mr1 = create_test_mr(1, 10, "MR 1");
+        let mr2 = create_test_mr(2, 20, "MR 2");
+
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr: mr1,
+            pipelines: vec![],
+            jobs: HashMap::new(),
+            selected_pipeline_index: 0,
+            loading: false,
+            error: None,
+        });
+
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr: mr2,
+            pipelines: vec![],
+            jobs: HashMap::new(),
+            selected_pipeline_index: 0,
+            loading: false,
+            error: None,
+        });
+
+        assert_eq!(app.tracked_mrs.len(), 2);
+        app.update(Action::RemoveCurrentMr);
+        assert_eq!(app.tracked_mrs.len(), 1);
+        assert_eq!(app.tracked_mrs[0].mr.title, "MR 2");
+    }
+
+    #[test]
+    fn test_get_selected_mr() {
+        let mut app = App::new(123, None, false);
+
+        assert!(app.get_selected_mr().is_none());
+
+        let mr = create_test_mr(1, 10, "Test MR");
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr,
+            pipelines: vec![],
+            jobs: HashMap::new(),
+            selected_pipeline_index: 0,
+            loading: false,
+            error: None,
+        });
+
+        let selected = app.get_selected_mr();
+        assert!(selected.is_some());
+        assert_eq!(selected.unwrap().mr.title, "Test MR");
+    }
+
+    #[test]
+    fn test_get_selected_jobs() {
+        let mut app = App::new(123, None, false);
+
+        let mr = create_test_mr(1, 10, "Test MR");
+        let pipeline = create_test_pipeline(100, PipelineStatus::Running);
+        let job = create_test_job(200, "test-job", JobStatus::Success);
+
+        let mut jobs_map = HashMap::new();
+        jobs_map.insert(100, vec![job]);
+
+        app.tracked_mrs.push(TrackedMergeRequest {
+            mr,
+            pipelines: vec![pipeline],
+            jobs: jobs_map,
+            selected_pipeline_index: 0,
+            loading: false,
+            error: None,
+        });
+
+        let jobs = app.get_selected_jobs();
+        assert!(jobs.is_some());
+        assert_eq!(jobs.unwrap().len(), 1);
+        assert_eq!(jobs.unwrap()[0].name, "test-job");
+    }
+}
