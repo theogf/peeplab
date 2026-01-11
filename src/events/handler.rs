@@ -67,6 +67,7 @@ pub fn map_event_to_action(event: AppEvent, app: &App) -> Action {
                 KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
                     Action::Quit
                 }
+                KeyCode::Char('?') => Action::ShowHelp,
                 KeyCode::Left | KeyCode::Char('h') => Action::PrevMr,
                 KeyCode::Right | KeyCode::Char('l') => Action::NextMr,
                 KeyCode::Up | KeyCode::Char('k') => Action::PrevJob,
@@ -81,6 +82,10 @@ pub fn map_event_to_action(event: AppEvent, app: &App) -> Action {
             AppMode::SelectingMr => match key.code {
                 KeyCode::Esc => Action::None, // Exit selection mode
                 KeyCode::Char('q') => Action::Quit,
+                _ => Action::None,
+            },
+            AppMode::ShowingHelp => match key.code {
+                KeyCode::Esc | KeyCode::Char('?') | KeyCode::Char('q') => Action::HideHelp,
                 _ => Action::None,
             },
         },

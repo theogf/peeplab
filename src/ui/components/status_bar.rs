@@ -20,13 +20,12 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         )])
     } else {
         Line::from(vec![
+            Span::raw("?: help | "),
             Span::raw("q: quit | "),
             Span::raw("←/→: switch MR | "),
             Span::raw("↑/↓: select job | "),
-            Span::raw("[/]: switch pipeline | "),
             Span::raw("Enter: open log | "),
-            Span::raw("r: refresh | "),
-            Span::raw("d: remove MR"),
+            Span::raw("r: refresh"),
         ])
     };
 

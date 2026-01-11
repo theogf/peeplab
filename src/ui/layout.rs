@@ -1,4 +1,4 @@
-use crate::app::App;
+use crate::app::{App, AppMode};
 use ratatui::{
     layout::{Constraint, Direction, Layout},
     Frame,
@@ -21,4 +21,9 @@ pub fn render(f: &mut Frame, app: &App) {
     components::pipeline_list::render(f, app, chunks[1]);
     components::job_list::render(f, app, chunks[2]);
     components::status_bar::render(f, app, chunks[3]);
+
+    // Render help popup on top if in help mode
+    if app.mode == AppMode::ShowingHelp {
+        components::help::render(f, f.area());
+    }
 }

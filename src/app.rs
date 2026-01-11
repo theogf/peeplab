@@ -133,26 +133,70 @@ impl App {
             }
 
             Action::NextPipeline => {
-                if let Some(mr) = self.get_selected_mr_mut() {
+                let mr_index = self.selected_mr_index;
+                let project_id = self.project_id;
+
+                if let Some(mr) = self.tracked_mrs.get_mut(mr_index) {
                     if !mr.pipelines.is_empty() {
                         mr.selected_pipeline_index =
                             (mr.selected_pipeline_index + 1) % mr.pipelines.len();
-                        self.selected_job_index = 0;
+
+                        // Fetch jobs for this pipeline if we don't have them yet
+                        if let Some(pipeline) = mr.pipelines.get(mr.selected_pipeline_index) {
+                            let pipeline_id = pipeline.id;
+                            let needs_fetch = !mr.jobs.contains_key(&pipeline_id);
+
+                            // Now we can drop the borrow and modify self
+                            drop(mr);
+                            self.selected_job_index = 0;
+
+                            if needs_fetch {
+                                return Some(Effect::FetchJobs {
+                                    mr_index,
+                                    project_id,
+                                    pipeline_id,
+                                });
+                            }
+                        }
                     }
                 }
+
+                self.selected_job_index = 0;
                 None
             }
 
             Action::PrevPipeline => {
-                if let Some(mr) = self.get_selected_mr_mut() {
+                let mr_index = self.selected_mr_index;
+                let project_id = self.project_id;
+
+                if let Some(mr) = self.tracked_mrs.get_mut(mr_index) {
                     if !mr.pipelines.is_empty() {
                         mr.selected_pipeline_index = mr
                             .selected_pipeline_index
                             .checked_sub(1)
                             .unwrap_or(mr.pipelines.len() - 1);
-                        self.selected_job_index = 0;
+
+                        // Fetch jobs for this pipeline if we don't have them yet
+                        if let Some(pipeline) = mr.pipelines.get(mr.selected_pipeline_index) {
+                            let pipeline_id = pipeline.id;
+                            let needs_fetch = !mr.jobs.contains_key(&pipeline_id);
+
+                            // Now we can drop the borrow and modify self
+                            drop(mr);
+                            self.selected_job_index = 0;
+
+                            if needs_fetch {
+                                return Some(Effect::FetchJobs {
+                                    mr_index,
+                                    project_id,
+                                    pipeline_id,
+                                });
+                            }
+                        }
                     }
                 }
+
+                self.selected_job_index = 0;
                 None
             }
 
