@@ -253,13 +253,13 @@ async fn handle_effect(
             });
         }
 
-        Effect::FetchJobTrace { project_id, job_id } => {
+        Effect::FetchJobTrace { project_id, job_id, job_name } => {
             let action_tx = action_tx.clone();
             let client = gitlab_client.clone();
             tokio::spawn(async move {
                 match client.get_job_trace(project_id, job_id).await {
                     Ok(trace) => {
-                        let _ = action_tx.send(Action::JobTraceLoaded { job_id, trace });
+                        let _ = action_tx.send(Action::JobTraceLoaded { job_id, job_name, trace });
                     }
                     Err(e) => {
                         let _ = action_tx.send(Action::ApiError(e.to_string()));

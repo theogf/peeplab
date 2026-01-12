@@ -7,6 +7,7 @@ edition = "2021"
 # TUI
 ratatui = "0.28"
 crossterm = "0.28"
+ansi-to-tui = "6.0"
 
 # Async & HTTP
 tokio = { version = "1.41", features = ["full"] }

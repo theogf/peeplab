@@ -20,6 +20,13 @@ pub enum Action {
     ToggleCommentsView,
     NextNote,
     PrevNote,
+    CloseLogViewer,
+    ScrollLogUp,
+    ScrollLogDown,
+    ScrollLogPageUp,
+    ScrollLogPageDown,
+    ScrollLogHome,
+    ScrollLogEnd,
 
     // API Response Actions
     MergeRequestsLoaded(Vec<MergeRequest>),
@@ -34,6 +41,7 @@ pub enum Action {
     },
     JobTraceLoaded {
         job_id: u64,
+        job_name: String,
         trace: String,
     },
     NotesLoaded {
@@ -57,7 +65,7 @@ pub enum Effect {
     FetchMergeRequestsByBranch { project_id: u64, source_branch: String },
     FetchPipelines { mr_index: usize, project_id: u64, mr_iid: u64 },
     FetchJobs { mr_index: usize, project_id: u64, pipeline_id: u64 },
-    FetchJobTrace { project_id: u64, job_id: u64 },
+    FetchJobTrace { project_id: u64, job_id: u64, job_name: String },
     FetchNotes { mr_index: usize, project_id: u64, mr_iid: u64 },
     OpenInEditor(String),
     RefreshAll { project_id: u64, source_branch: Option<String> },

@@ -17,6 +17,11 @@ pub struct App {
     // UI Modes
     pub mode: AppMode,
 
+    // Log Viewer State
+    pub log_content: Option<String>,
+    pub log_scroll_offset: usize,
+    pub log_job_name: Option<String>,
+
     // Status
     pub status_message: Option<String>,
     pub error_message: Option<String>,
@@ -40,6 +45,7 @@ pub struct TrackedMergeRequest {
 pub enum AppMode {
     Normal,           // Viewing MRs and jobs
     ViewingComments,  // Viewing MR comments instead of jobs
+    ViewingLog,       // Viewing job log internally
     SelectingMr,      // MR selection dialog
     ShowingHelp,      // Help popup visible
 }
@@ -61,6 +67,9 @@ impl App {
             current_branch,
             focus_current_branch,
             mode: AppMode::Normal,
+            log_content: None,
+            log_scroll_offset: 0,
+            log_job_name: None,
             status_message,
             error_message: None,
             last_refresh: None,
@@ -223,6 +232,7 @@ impl App {
                     return Some(Effect::FetchJobTrace {
                         project_id: self.project_id,
                         job_id,
+                        job_name,
                     });
                 }
                 None
@@ -323,9 +333,66 @@ impl App {
                 None
             }
 
-            Action::JobTraceLoaded { trace, .. } => {
+            Action::JobTraceLoaded { job_name, trace, .. } => {
                 self.status_message = None;
-                Some(Effect::OpenInEditor(trace))
+                self.log_content = Some(trace);
+                self.log_job_name = Some(job_name);
+                self.log_scroll_offset = 0;
+                self.mode = AppMode::ViewingLog;
+                None
+            }
+
+            Action::CloseLogViewer => {
+                self.mode = AppMode::Normal;
+                self.log_content = None;
+                self.log_job_name = None;
+                self.log_scroll_offset = 0;
+                None
+            }
+
+            Action::ScrollLogUp => {
+                if self.mode == AppMode::ViewingLog {
+                    self.log_scroll_offset = self.log_scroll_offset.saturating_sub(1);
+                }
+                None
+            }
+
+            Action::ScrollLogDown => {
+                if self.mode == AppMode::ViewingLog {
+                    self.log_scroll_offset = self.log_scroll_offset.saturating_add(1);
+                }
+                None
+            }
+
+            Action::ScrollLogPageUp => {
+                if self.mode == AppMode::ViewingLog {
+                    self.log_scroll_offset = self.log_scroll_offset.saturating_sub(10);
+                }
+                None
+            }
+
+            Action::ScrollLogPageDown => {
+                if self.mode == AppMode::ViewingLog {
+                    self.log_scroll_offset = self.log_scroll_offset.saturating_add(10);
+                }
+                None
+            }
+
+            Action::ScrollLogHome => {
+                if self.mode == AppMode::ViewingLog {
+                    self.log_scroll_offset = 0;
+                }
+                None
+            }
+
+            Action::ScrollLogEnd => {
+                if self.mode == AppMode::ViewingLog {
+                    if let Some(content) = &self.log_content {
+                        let total_lines = content.lines().count();
+                        self.log_scroll_offset = total_lines.saturating_sub(1);
+                    }
+                }
+                None
             }
 
             Action::ApiError(error) => {
