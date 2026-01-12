@@ -2,9 +2,48 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Recent Changes (2026-01-12)
+
+### Package Rename
+- **Renamed from `labpeep` to `peeplab`**
+- Updated all references in code, README, Cargo.toml
+- Renamed error type from `LabpeepError` to `PeeplabError`
+- Config directory changed from `~/.config/labpeep/` to `~/.config/peeplab/`
+
+### Log Viewer Performance Optimization
+- **Added `log_processor.rs` module** for centralized log processing
+- **Implemented line caching**: Logs are processed once and cached in `App.log_processed_lines`
+- **Performance improvement**: 50,000+ line logs now render instantly (no per-frame regex/ANSI parsing)
+- Processing only happens:
+  - Once when log is loaded (`Action::JobTraceLoaded`)
+  - When timestamp mode changes (press 't')
+  - Never during scrolling
+
+### GitLab CI Log Prefix Stripping
+- **Fixed prefix stripping** to handle GitLab CI control codes
+- Format: `2026-01-12T10:35:38.187431Z 00O [0KMessage...`
+- Strips prefixes like `00O`, `00E`, `01O` that appear after timestamps
+- Removes section markers (`section_start:`, `section_end:`)
+- Handles ANSI escape codes mixed with prefixes
+
+### Search Highlighting
+- **Added visual highlighting** for search matches in log viewer
+- Matches highlighted with yellow background and black text
+- All occurrences on visible lines are highlighted
+- Search is case-insensitive ASCII search
+- Use `/` to search, `n`/`N` to navigate matches
+
+### Internal Log Viewer
+- **Replaced external editor** with internal TUI log viewer for job logs
+- Supports ANSI color codes (using `ansi-to-tui` library)
+- Timestamp display modes: Hidden, DateOnly, Full (toggle with 't')
+- Scrolling: arrow keys, PageUp/Down, Home/End
+- Search functionality with visual feedback
+- Centered popup (90% width/height) to prevent overflow
+
 ## Project Overview
 
-**labpeep** is a TUI (Terminal User Interface) application for monitoring GitLab CI/CD pipelines and merge requests. It provides real-time pipeline status, job details, and the ability to view job logs directly in your editor.
+**peeplab** is a TUI (Terminal User Interface) application for monitoring GitLab CI/CD pipelines and merge requests. It provides real-time pipeline status, job details, and the ability to view job logs directly in an internal viewer with search and highlighting capabilities.
 
 ## Build & Test Commands
 
@@ -17,7 +56,7 @@ cargo build
 cargo build --release
 
 # Binary location
-target/release/labpeep
+target/release/peeplab
 ```
 
 ### Testing
@@ -42,7 +81,7 @@ cargo test app::tests --lib
 cargo run
 
 # Or use the binary directly
-./target/release/labpeep
+./target/release/peeplab
 ```
 
 ## Architecture: The Elm Architecture (TEA)
@@ -60,8 +99,9 @@ User Input → Action → Update (State Change) → Effect → Async Operation �
 **1. State Management (`src/app.rs`)**
 - `App` struct: Central state container
 - `TrackedMergeRequest`: Per-MR state (pipelines, jobs, notes, loading status)
-- `AppMode` enum: UI modes (Normal, ViewingComments, SelectingMr, ShowingHelp)
+- `AppMode` enum: UI modes (Normal, ViewingLog, ViewingComments, SelectingMr, ShowingHelp)
 - `update()` method: Pure function that takes `Action`, returns `Option<Effect>`
+- Log viewer state: `log_processed_lines` (cached), `log_scroll_offset`, `timestamp_mode`, search state
 
 **2. Actions & Effects (`src/events/actions.rs`)**
 - `Action` enum: Synchronous state changes (user input + API responses)
@@ -157,7 +197,7 @@ src/
 ├── main.rs              # Entry point, event loop, effect execution
 ├── app.rs               # State management, update logic
 ├── lib.rs               # Library exports for testing
-├── error.rs             # Error types (thiserror)
+├── error.rs             # Error types (PeeplabError, thiserror)
 ├── config/              # TOML config loading
 ├── events/
 │   ├── actions.rs       # Action/Effect enums
@@ -167,10 +207,17 @@ src/
 │   └── models.rs        # API response models (serde)
 ├── git.rs               # Git operations (project detection, branch)
 ├── editor/
-│   └── mod.rs           # Editor launching with terminal suspension
+│   └── mod.rs           # Editor launching with terminal suspension (legacy)
+├── log_processor.rs     # Log processing: prefix stripping, timestamp formatting, ANSI parsing
 └── ui/
     ├── layout.rs        # Main render function
     └── components/      # Individual UI widgets
+        ├── log_viewer.rs    # Internal log viewer with search highlighting
+        ├── comments_list.rs # MR comments/notes display
+        ├── help.rs          # Help popup
+        ├── job_list.rs      # Job table
+        ├── mr_tabs.rs       # MR tabs
+        └── pipeline_list.rs # Pipeline list
 ```
 
 ## Important Implementation Details
@@ -216,7 +263,7 @@ src/
 
 ## Configuration
 
-Config file: `~/.config/labpeep/config.toml`
+Config file: `~/.config/peeplab/config.toml`
 
 ```toml
 [gitlab]
@@ -239,11 +286,16 @@ focus_current_branch = true           # Default: true (show only current branch 
 
 ## Performance Considerations
 
+- **Log line caching**: Processed log lines stored in `App.log_processed_lines` for instant rendering
+  - Processing (regex, ANSI parsing) happens once on load, not every frame
+  - Dramatically improves scrolling performance for large logs (50K+ lines)
+  - Reprocessed only when timestamp mode changes
 - **Lazy loading**: Notes (comments) fetched only when user toggles to comments view
 - **Buffered I/O**: Uses `BufWriter` with 8KB buffer for large log files
 - **Non-blocking**: All API calls use `tokio::spawn` to avoid UI freezes
 - **Pagination**: API calls use `per_page=100` for jobs, `per_page=20` for MRs
-- **Avoid sync_all()**: File writes don't force fsync for better editor launch performance
+- **Responsive input**: Event polling at 16ms (~60fps) for smooth keyboard response
+- **Search optimization**: Search operates on raw log content, highlighting done only on visible lines
 
 ## Common Pitfalls
 

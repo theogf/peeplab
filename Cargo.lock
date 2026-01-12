@@ -808,30 +808,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "labpeep"
-version = "0.1.0"
-dependencies = [
- "ansi-to-tui",
- "anyhow",
- "chrono",
- "crossterm",
- "dirs",
- "git2",
- "mockito",
- "ratatui",
- "regex",
- "reqwest",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
- "tokio",
- "tokio-test",
- "toml",
- "url",
-]
-
-[[package]]
 name = "libc"
 version = "0.2.180"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1104,6 +1080,30 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "peeplab"
+version = "0.1.0"
+dependencies = [
+ "ansi-to-tui",
+ "anyhow",
+ "chrono",
+ "crossterm",
+ "dirs",
+ "git2",
+ "mockito",
+ "ratatui",
+ "regex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-test",
+ "toml",
+ "url",
+]
 
 [[package]]
 name = "percent-encoding"

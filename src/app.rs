@@ -26,7 +26,9 @@ pub struct App {
 
     // Log Viewer State
     pub log_content: Option<String>,
+    pub log_processed_lines: Vec<ratatui::text::Line<'static>>, // Cached processed lines
     pub log_scroll_offset: usize,
+    pub log_viewport_height: usize, // Height of visible log area (set by renderer)
     pub log_job_name: Option<String>,
     pub timestamp_mode: TimestampDisplayMode,
     pub search_query: String,
@@ -45,12 +47,14 @@ pub struct TrackedMergeRequest {
     pub mr: MergeRequest,
     pub pipelines: Vec<Pipeline>,
     pub jobs: HashMap<u64, Vec<Job>>, // pipeline_id -> jobs
+    pub job_logs_cache: HashMap<u64, String>, // job_id -> cached log content
     pub notes: Vec<Note>,              // MR comments/notes
     pub notes_loaded: bool,            // Track if notes have been fetched
     pub selected_pipeline_index: usize,
     pub selected_note_index: usize,    // Track selected comment for navigation
     pub loading: bool,
-    pub error: Option<String>,
+    #[allow(dead_code)]
+    pub error: Option<String>,         // Reserved for future per-MR error tracking
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -80,7 +84,9 @@ impl App {
             focus_current_branch,
             mode: AppMode::Normal,
             log_content: None,
+            log_processed_lines: Vec::new(),
             log_scroll_offset: 0,
+            log_viewport_height: 30, // Default, will be updated by renderer
             log_job_name: None,
             timestamp_mode: TimestampDisplayMode::Hidden,
             search_query: String::new(),
@@ -122,6 +128,29 @@ impl App {
 
     pub fn is_viewing_comments(&self) -> bool {
         self.mode == AppMode::ViewingComments
+    }
+
+    /// Center a line in the log viewer viewport
+    fn center_log_line(&mut self, line_number: usize) {
+        let total_lines = self.log_processed_lines.len();
+        if total_lines == 0 {
+            return;
+        }
+
+        // Calculate offset to center the line
+        let half_viewport = self.log_viewport_height / 2;
+
+        // Try to position the line in the middle
+        if line_number >= half_viewport {
+            self.log_scroll_offset = line_number - half_viewport;
+        } else {
+            // If line is near the top, just show from the beginning
+            self.log_scroll_offset = 0;
+        }
+
+        // Don't scroll past the end
+        let max_offset = total_lines.saturating_sub(self.log_viewport_height);
+        self.log_scroll_offset = self.log_scroll_offset.min(max_offset);
     }
 
     pub fn update(&mut self, action: Action) -> Option<Effect> {
@@ -245,6 +274,21 @@ impl App {
                     .map(|job| (job.name.clone(), job.id));
 
                 if let Some((job_name, job_id)) = job_info {
+                    // Check if log is already cached
+                    if let Some(mr) = self.tracked_mrs.get(self.selected_mr_index) {
+                        if let Some(cached_log) = mr.job_logs_cache.get(&job_id) {
+                            // Use cached log
+                            self.status_message = None;
+                            self.log_processed_lines = crate::log_processor::process_log_content(cached_log, &self.timestamp_mode);
+                            self.log_content = Some(cached_log.clone());
+                            self.log_job_name = Some(job_name);
+                            self.log_scroll_offset = 0;
+                            self.mode = AppMode::ViewingLog;
+                            return None;
+                        }
+                    }
+
+                    // Not cached, fetch from API
                     self.status_message = Some(format!("Fetching log for job '{}'...", job_name));
                     return Some(Effect::FetchJobTrace {
                         project_id: self.project_id,
@@ -256,10 +300,11 @@ impl App {
             }
 
             Action::Refresh => {
-                // Clear all cached data including notes
+                // Clear all cached data including notes and job logs
                 for mr in &mut self.tracked_mrs {
                     mr.notes_loaded = false;
                     mr.notes.clear();
+                    mr.job_logs_cache.clear();
                 }
 
                 self.status_message = Some("Refreshing...".to_string());
@@ -292,6 +337,7 @@ impl App {
                             mr: mr.clone(),
                             pipelines: Vec::new(),
                             jobs: HashMap::new(),
+                            job_logs_cache: HashMap::new(),
                             notes: Vec::new(),
                             notes_loaded: false,
                             selected_pipeline_index: 0,
@@ -361,8 +407,16 @@ impl App {
                 None
             }
 
-            Action::JobTraceLoaded { job_name, trace, .. } => {
+            Action::JobTraceLoaded { job_id, job_name, trace } => {
                 self.status_message = None;
+
+                // Cache the log in the current MR
+                if let Some(mr) = self.tracked_mrs.get_mut(self.selected_mr_index) {
+                    mr.job_logs_cache.insert(job_id, trace.clone());
+                }
+
+                // Process all lines upfront for fast rendering
+                self.log_processed_lines = crate::log_processor::process_log_content(&trace, &self.timestamp_mode);
                 self.log_content = Some(trace);
                 self.log_job_name = Some(job_name);
                 self.log_scroll_offset = 0;
@@ -373,6 +427,7 @@ impl App {
             Action::CloseLogViewer => {
                 self.mode = AppMode::Normal;
                 self.log_content = None;
+                self.log_processed_lines.clear();
                 self.log_job_name = None;
                 self.log_scroll_offset = 0;
                 self.search_query.clear();
@@ -434,6 +489,10 @@ impl App {
                         TimestampDisplayMode::DateOnly => TimestampDisplayMode::Full,
                         TimestampDisplayMode::Full => TimestampDisplayMode::Hidden,
                     };
+                    // Reprocess lines with new timestamp mode
+                    if let Some(ref content) = self.log_content {
+                        self.log_processed_lines = crate::log_processor::process_log_content(content, &self.timestamp_mode);
+                    }
                 }
                 None
             }
@@ -470,9 +529,9 @@ impl App {
                     self.is_searching = false;
                     self.current_search_result = 0;
 
-                    // Jump to first result if any
+                    // Jump to first result if any, centered in viewport
                     if !self.search_results.is_empty() {
-                        self.log_scroll_offset = self.search_results[0];
+                        self.center_log_line(self.search_results[0]);
                     }
                 }
                 None
@@ -481,7 +540,7 @@ impl App {
             Action::NextSearchResult => {
                 if !self.search_results.is_empty() && self.mode == AppMode::ViewingLog {
                     self.current_search_result = (self.current_search_result + 1) % self.search_results.len();
-                    self.log_scroll_offset = self.search_results[self.current_search_result];
+                    self.center_log_line(self.search_results[self.current_search_result]);
                 }
                 None
             }
@@ -493,7 +552,7 @@ impl App {
                     } else {
                         self.current_search_result - 1
                     };
-                    self.log_scroll_offset = self.search_results[self.current_search_result];
+                    self.center_log_line(self.search_results[self.current_search_result]);
                 }
                 None
             }
@@ -691,6 +750,7 @@ mod tests {
             mr: mr1,
             pipelines: vec![],
             jobs: HashMap::new(),
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,
@@ -703,6 +763,7 @@ mod tests {
             mr: mr2,
             pipelines: vec![],
             jobs: HashMap::new(),
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,
@@ -729,6 +790,7 @@ mod tests {
             mr: mr1,
             pipelines: vec![],
             jobs: HashMap::new(),
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,
@@ -741,6 +803,7 @@ mod tests {
             mr: mr2,
             pipelines: vec![],
             jobs: HashMap::new(),
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,
@@ -780,6 +843,7 @@ mod tests {
             mr,
             pipelines: vec![],
             jobs: HashMap::new(),
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,
@@ -814,6 +878,7 @@ mod tests {
             mr,
             pipelines: vec![pipeline],
             jobs: HashMap::new(),
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,
@@ -860,6 +925,7 @@ mod tests {
             mr: mr1,
             pipelines: vec![],
             jobs: HashMap::new(),
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,
@@ -872,6 +938,7 @@ mod tests {
             mr: mr2,
             pipelines: vec![],
             jobs: HashMap::new(),
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,
@@ -897,6 +964,7 @@ mod tests {
             mr,
             pipelines: vec![],
             jobs: HashMap::new(),
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,
@@ -925,6 +993,7 @@ mod tests {
             mr,
             pipelines: vec![pipeline],
             jobs: jobs_map,
+            job_logs_cache: HashMap::new(),
             notes: Vec::new(),
             notes_loaded: false,
             selected_pipeline_index: 0,

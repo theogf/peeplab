@@ -1,4 +1,4 @@
-use crate::error::{LabpeepError, Result};
+use crate::error::{PeeplabError, Result};
 use std::env;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -27,7 +27,7 @@ pub fn open_in_editor(content: &str) -> Result<()> {
 
     // Create temporary file with better performance for large files
     let temp_dir = env::temp_dir();
-    let temp_file = temp_dir.join("labpeep_job_log.txt");
+    let temp_file = temp_dir.join("peeplab_job_log.txt");
 
     // Write content to temp file using BufWriter for better performance
     {
@@ -55,7 +55,7 @@ pub fn open_in_editor(content: &str) -> Result<()> {
     let status = Command::new(&editor)
         .arg(&temp_file)
         .status()
-        .map_err(|e| LabpeepError::EditorLaunch(format!("Failed to launch {}: {}", editor, e)))?;
+        .map_err(|e| PeeplabError::EditorLaunch(format!("Failed to launch {}: {}", editor, e)))?;
 
     // Explicitly drop guard before restoring to avoid double restoration
     drop(_guard);
@@ -70,7 +70,7 @@ pub fn open_in_editor(content: &str) -> Result<()> {
 
     if !status.success() {
         // Terminal is already restored, safe to return error
-        return Err(LabpeepError::EditorLaunch(
+        return Err(PeeplabError::EditorLaunch(
             "Editor exited with non-zero status".to_string(),
         ));
     }
@@ -90,7 +90,7 @@ mod tests {
 
         // Write to temp file using the same approach as open_in_editor
         let temp_dir = env::temp_dir();
-        let temp_file = temp_dir.join("labpeep_test_large_log.txt");
+        let temp_file = temp_dir.join("peeplab_test_large_log.txt");
 
         // Test the BufWriter approach
         let start = std::time::Instant::now();
@@ -121,7 +121,7 @@ mod tests {
     fn test_temp_file_creation() {
         // Test that we can create and write to the temp file location
         let temp_dir = env::temp_dir();
-        let temp_file = temp_dir.join("labpeep_job_log_test.txt");
+        let temp_file = temp_dir.join("peeplab_job_log_test.txt");
 
         let test_content = "Test log content\nLine 2\nLine 3";
 
@@ -147,7 +147,7 @@ mod tests {
         let temp_dir = env::temp_dir();
 
         // Test BufWriter approach (what we use now)
-        let buffered_file = temp_dir.join("labpeep_test_buffered.txt");
+        let buffered_file = temp_dir.join("peeplab_test_buffered.txt");
         let start = std::time::Instant::now();
         {
             let file = File::create(&buffered_file).unwrap();
@@ -157,7 +157,7 @@ mod tests {
         let buffered_time = start.elapsed();
 
         // Test direct write (for comparison)
-        let direct_file = temp_dir.join("labpeep_test_direct.txt");
+        let direct_file = temp_dir.join("peeplab_test_direct.txt");
         let start = std::time::Instant::now();
         {
             let mut file = File::create(&direct_file).unwrap();

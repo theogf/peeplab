@@ -17,6 +17,7 @@ mod error;
 mod events;
 mod git;
 mod gitlab;
+mod log_processor;
 mod ui;
 
 use app::App;
@@ -144,6 +145,13 @@ async fn main() -> Result<()> {
     )
     .await;
 
+    // Drop event handler to stop background tasks before terminal cleanup
+    drop(event_handler);
+    drop(action_rx);
+
+    // Give background tasks a moment to clean up
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
     // Restore terminal
     disable_raw_mode()?;
     execute!(
@@ -170,6 +178,14 @@ async fn run_app(
     loop {
         // Render
         terminal.draw(|f| ui::render(f, app))?;
+
+        // Update viewport height for log viewer centering
+        if app.mode == app::AppMode::ViewingLog {
+            let size = terminal.size()?;
+            // Approximate content height: total height - tabs(3) - pipeline(10) - borders(2) - search bar(0-3)
+            let estimated_log_height = size.height.saturating_sub(17) as usize;
+            app.log_viewport_height = estimated_log_height.max(10); // At least 10 lines
+        }
 
         // Handle events
         tokio::select! {

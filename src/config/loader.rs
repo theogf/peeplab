@@ -1,13 +1,13 @@
-use crate::error::{LabpeepError, Result};
+use crate::error::{PeeplabError, Result};
 use super::settings::Settings;
 use dirs::config_dir;
 use std::path::PathBuf;
 
 pub fn get_config_path() -> Result<PathBuf> {
     let config_dir = config_dir()
-        .ok_or_else(|| LabpeepError::Config("Could not determine config directory".to_string()))?;
+        .ok_or_else(|| PeeplabError::Config("Could not determine config directory".to_string()))?;
 
-    let app_config_dir = config_dir.join("labpeep");
+    let app_config_dir = config_dir.join("peeplab");
     std::fs::create_dir_all(&app_config_dir)?;
 
     Ok(app_config_dir.join("config.toml"))
@@ -17,7 +17,7 @@ pub fn load_config() -> Result<Settings> {
     let config_path = get_config_path()?;
 
     if !config_path.exists() {
-        return Err(LabpeepError::Config(format!(
+        return Err(PeeplabError::Config(format!(
             "Config file not found at {:?}. Please create one with your GitLab token.",
             config_path
         )));
@@ -26,7 +26,7 @@ pub fn load_config() -> Result<Settings> {
     let content = std::fs::read_to_string(&config_path)?;
     let settings: Settings = toml::from_str(&content)?;
 
-    settings.validate().map_err(|e| LabpeepError::Config(e.to_string()))?;
+    settings.validate().map_err(|e| PeeplabError::Config(e.to_string()))?;
     Ok(settings)
 }
 
@@ -95,7 +95,7 @@ mod tests {
         let result = get_config_path();
         assert!(result.is_ok());
         let path = result.unwrap();
-        assert!(path.to_string_lossy().contains("labpeep"));
+        assert!(path.to_string_lossy().contains("peeplab"));
         assert!(path.to_string_lossy().contains("config.toml"));
     }
 }

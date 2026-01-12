@@ -6,74 +6,57 @@ use ratatui::{
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
-use regex::Regex;
 
-/// Parse and format log line based on timestamp display mode
-fn process_log_line(line: &str, mode: &TimestampDisplayMode) -> String {
-    // First, strip GitLab CI log prefixes (00E, 00O, section markers, etc.)
-    let stripped_line = strip_gitlab_prefixes(line);
+/// Highlight search query matches in a line
+fn highlight_search_in_line(line: &Line, query: &str) -> Line<'static> {
+    // Convert line to plain text for searching
+    let line_text: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
+    let query_lower = query.to_lowercase();
+    let line_lower = line_text.to_lowercase();
 
-    // Regex to match ISO timestamps at the start of the line
-    // Matches patterns like: 2024-01-15T10:30:45.123Z or 2024-01-15T10:30:45+00:00
-    let re = Regex::new(r"^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\s+").unwrap();
-
-    match mode {
-        TimestampDisplayMode::Hidden => {
-            // Strip timestamp completely
-            re.replace(&stripped_line, "").to_string()
-        }
-        TimestampDisplayMode::DateOnly => {
-            // Show only the date part
-            if let Some(caps) = re.captures(&stripped_line) {
-                let date = &caps[1];
-                let rest = &stripped_line[caps.get(0).unwrap().end()..];
-                format!("{} {}", date, rest)
-            } else {
-                stripped_line
-            }
-        }
-        TimestampDisplayMode::Full => {
-            // Show date and time (but not milliseconds/timezone)
-            if let Some(caps) = re.captures(&stripped_line) {
-                let date = &caps[1];
-                let time = &caps[2];
-                let rest = &stripped_line[caps.get(0).unwrap().end()..];
-                format!("{} {} {}", date, time, rest)
-            } else {
-                stripped_line
-            }
-        }
-    }
-}
-
-/// Strip GitLab CI log prefixes like 00E, 00O, section markers, etc.
-fn strip_gitlab_prefixes(line: &str) -> String {
-    // GitLab uses special prefixes:
-    // - \x00[0-9A-F]{2} (null byte + 2 hex chars) for control codes
-    // - section_start:timestamp:name for collapsible sections
-    // - section_end:timestamp:name for section endings
-
-    let mut result = line;
-
-    // Strip null byte prefixes like \x0000E, \x0000O, etc.
-    // These show up as "00E", "00O" in the text
-    if result.starts_with("\x00") && result.len() >= 3 {
-        result = &result[3..]; // Skip null byte + 2 hex chars
-    } else if result.starts_with("00") && result.len() >= 3 {
-        // Sometimes they appear without the null byte
-        let third_char = result.chars().nth(2);
-        if matches!(third_char, Some('E') | Some('O') | Some('0'..='9') | Some('A'..='F') | Some('a'..='f')) {
-            result = &result[3..];
-        }
+    // Find all match positions
+    let mut matches: Vec<(usize, usize)> = Vec::new();
+    let mut start = 0;
+    while let Some(pos) = line_lower[start..].find(&query_lower) {
+        let match_start = start + pos;
+        let match_end = match_start + query.len();
+        matches.push((match_start, match_end));
+        start = match_end;
     }
 
-    // Strip section markers
-    if result.starts_with("section_start:") || result.starts_with("section_end:") {
-        // These lines are typically used for collapsible sections, skip them entirely
-        return String::new();
+    if matches.is_empty() {
+        // Return owned version of the line with plain text
+        return Line::from(line_text);
     }
 
-    result.to_string()
+    // Build new line with highlights
+    let mut new_spans = Vec::new();
+    let mut last_end = 0;
+
+    for (match_start, match_end) in matches {
+        // Add text before match
+        if match_start > last_end {
+            new_spans.push(Span::raw(line_text[last_end..match_start].to_string()));
+        }
+
+        // Add highlighted match
+        new_spans.push(Span::styled(
+            line_text[match_start..match_end].to_string(),
+            Style::default()
+                .bg(Color::Yellow)
+                .fg(Color::Black)
+                .add_modifier(Modifier::BOLD),
+        ));
+
+        last_end = match_end;
+    }
+
+    // Add remaining text
+    if last_end < line_text.len() {
+        new_spans.push(Span::raw(line_text[last_end..].to_string()));
+    }
+
+    Line::from(new_spans)
 }
 
 /// Helper function to create a centered rectangle
@@ -104,7 +87,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     // Clear the background to prevent rendering artifacts
     f.render_widget(Clear, log_area);
 
-    let log_content = match &app.log_content {
+    let _log_content = match &app.log_content {
         Some(content) => content,
         None => {
             let block = Block::default()
@@ -121,30 +104,8 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         .as_deref()
         .unwrap_or("Unknown Job");
 
-    // Process timestamps and parse ANSI codes, converting to ratatui Lines
-    let lines: Vec<Line> = log_content
-        .lines()
-        .map(|line| {
-            // First, process the timestamp based on display mode
-            let processed_line = process_log_line(line, &app.timestamp_mode);
-
-            // Then parse ANSI escape sequences
-            match ansi_to_tui::IntoText::into_text(&processed_line) {
-                Ok(text) => {
-                    // Convert ratatui Text to Line
-                    if text.lines.is_empty() {
-                        Line::from("")
-                    } else {
-                        text.lines[0].clone()
-                    }
-                }
-                Err(_) => {
-                    // If parsing fails, show raw text
-                    Line::from(processed_line)
-                }
-            }
-        })
-        .collect();
+    // Use cached processed lines for instant rendering
+    let lines = &app.log_processed_lines;
 
     // Calculate visible range based on scroll offset
     let content_height = log_area.height.saturating_sub(2) as usize; // Account for borders
@@ -152,11 +113,25 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     let max_offset = total_lines.saturating_sub(content_height);
     let scroll_offset = app.log_scroll_offset.min(max_offset);
 
-    // Get visible lines
+    // Get visible lines with search highlighting
     let visible_lines: Vec<Line> = if total_lines > 0 {
         let start = scroll_offset;
         let end = (scroll_offset + content_height).min(total_lines);
-        lines[start..end].to_vec()
+
+        lines[start..end]
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| {
+                let line_number = start + idx;
+
+                // Check if this line has a search match
+                if !app.search_query.is_empty() && app.search_results.contains(&line_number) {
+                    highlight_search_in_line(line, &app.search_query)
+                } else {
+                    line.clone()
+                }
+            })
+            .collect()
     } else {
         vec![Line::from("(empty log)")]
     };

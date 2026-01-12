@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum LabpeepError {
+pub enum PeeplabError {
     #[error("GitLab API error: {0}")]
     GitLabApi(#[from] reqwest::Error),
 
@@ -30,4 +30,4 @@ pub enum LabpeepError {
     NotFound(String),
 }
 
-pub type Result<T> = std::result::Result<T, LabpeepError>;
+pub type Result<T> = std::result::Result<T, PeeplabError>;

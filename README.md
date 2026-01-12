@@ -1,4 +1,4 @@
-# labpeep - GitLab Pipeline Monitor TUI
+# peeplab - GitLab Pipeline Monitor TUI
 
 A terminal user interface (TUI) application for monitoring GitLab CI/CD pipelines and merge requests.
 
@@ -17,11 +17,11 @@ A terminal user interface (TUI) application for monitoring GitLab CI/CD pipeline
 cargo build --release
 ```
 
-The binary will be available at `target/release/labpeep`.
+The binary will be available at `target/release/peeplab`.
 
 ## Configuration
 
-Create a configuration file at `~/.config/labpeep/config.toml`:
+Create a configuration file at `~/.config/peeplab/config.toml`:
 
 ```toml
 [gitlab]
@@ -70,7 +70,7 @@ theme = "dark"
 
 **Option 1: Auto-detection (Recommended)**
 
-If you run `labpeep` from within a git repository that has a GitLab remote, the project ID will be automatically detected! Just omit the `default_project_id` field in your config.
+If you run `peeplab` from within a git repository that has a GitLab remote, the project ID will be automatically detected! Just omit the `default_project_id` field in your config.
 
 Supported remote URL formats:
 - SSH: `git@gitlab.com:namespace/project.git`
@@ -86,7 +86,7 @@ Supported remote URL formats:
 ## Usage
 
 ```bash
-labpeep
+peeplab
 ```
 
 ### Keyboard Controls
@@ -104,10 +104,10 @@ labpeep
 
 ### Branch-Focused Mode
 
-By default, `labpeep` focuses on the MR for your current git branch only. This keeps you focused on your current work without distraction from other open MRs.
+By default, `peeplab` focuses on the MR for your current git branch only. This keeps you focused on your current work without distraction from other open MRs.
 
 **How it works:**
-- When you run `labpeep` from a git repository, it detects your current branch
+- When you run `peeplab` from a git repository, it detects your current branch
 - It fetches only the MR that has this branch as its source branch
 - You see pipeline status and jobs for just your current work
 
@@ -140,7 +140,7 @@ The application follows The Elm Architecture (TEA) pattern:
 
 ### "Config file not found" error
 
-Create the config file at `~/.config/labpeep/config.toml` with your GitLab token and project ID.
+Create the config file at `~/.config/peeplab/config.toml` with your GitLab token and project ID.
 
 ### "Authentication failed" error
 

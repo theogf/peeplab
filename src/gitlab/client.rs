@@ -1,4 +1,4 @@
-use crate::error::{LabpeepError, Result};
+use crate::error::{PeeplabError, Result};
 use super::models::{Job, MergeRequest, Note, Pipeline, Project};
 use reqwest::{Client, StatusCode, header};
 
@@ -14,7 +14,7 @@ impl GitLabClient {
         headers.insert(
             "PRIVATE-TOKEN",
             header::HeaderValue::from_str(token)
-                .map_err(|e| LabpeepError::Config(format!("Invalid token format: {}", e)))?,
+                .map_err(|e| PeeplabError::Config(format!("Invalid token format: {}", e)))?,
         );
 
         let client = Client::builder()
@@ -33,17 +33,17 @@ impl GitLabClient {
     {
         match response.status() {
             StatusCode::UNAUTHORIZED => {
-                Err(LabpeepError::Authentication(
+                Err(PeeplabError::Authentication(
                     "Invalid GitLab token or insufficient permissions".to_string()
                 ))
             }
             StatusCode::NOT_FOUND => {
-                Err(LabpeepError::NotFound(
+                Err(PeeplabError::NotFound(
                     "Resource not found".to_string()
                 ))
             }
             StatusCode::TOO_MANY_REQUESTS => {
-                Err(LabpeepError::Network(
+                Err(PeeplabError::Network(
                     "API rate limit exceeded. Please try again later.".to_string()
                 ))
             }
@@ -117,12 +117,12 @@ impl GitLabClient {
 
         match response.status() {
             StatusCode::UNAUTHORIZED => {
-                Err(LabpeepError::Authentication(
+                Err(PeeplabError::Authentication(
                     "Invalid GitLab token or insufficient permissions".to_string()
                 ))
             }
             StatusCode::NOT_FOUND => {
-                Err(LabpeepError::NotFound(
+                Err(PeeplabError::NotFound(
                     "Job trace not found".to_string()
                 ))
             }
@@ -209,7 +209,7 @@ mod tests {
         mock.assert_async().await;
         assert!(result.is_err());
         match result.unwrap_err() {
-            LabpeepError::Authentication(_) => {}
+            PeeplabError::Authentication(_) => {}
             _ => panic!("Expected Authentication error"),
         }
     }
@@ -316,7 +316,7 @@ mod tests {
         mock.assert_async().await;
         assert!(result.is_err());
         match result.unwrap_err() {
-            LabpeepError::NotFound(_) => {}
+            PeeplabError::NotFound(_) => {}
             _ => panic!("Expected NotFound error"),
         }
     }
@@ -337,7 +337,7 @@ mod tests {
         mock.assert_async().await;
         assert!(result.is_err());
         match result.unwrap_err() {
-            LabpeepError::Network(msg) => {
+            PeeplabError::Network(msg) => {
                 assert!(msg.contains("rate limit"));
             }
             _ => panic!("Expected Network error for rate limit"),
@@ -421,7 +421,7 @@ mod tests {
         mock.assert_async().await;
         assert!(result.is_err());
         match result.unwrap_err() {
-            LabpeepError::NotFound(_) => {}
+            PeeplabError::NotFound(_) => {}
             _ => panic!("Expected NotFound error"),
         }
     }
