@@ -1,5 +1,5 @@
 use crate::events::actions::{Action, Effect};
-use crate::gitlab::{Job, MergeRequest, Pipeline};
+use crate::gitlab::{Job, MergeRequest, Note, Pipeline};
 use std::collections::HashMap;
 
 pub struct App {
@@ -28,16 +28,20 @@ pub struct TrackedMergeRequest {
     pub mr: MergeRequest,
     pub pipelines: Vec<Pipeline>,
     pub jobs: HashMap<u64, Vec<Job>>, // pipeline_id -> jobs
+    pub notes: Vec<Note>,              // MR comments/notes
+    pub notes_loaded: bool,            // Track if notes have been fetched
     pub selected_pipeline_index: usize,
+    pub selected_note_index: usize,    // Track selected comment for navigation
     pub loading: bool,
     pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AppMode {
-    Normal,      // Viewing MRs and jobs
-    SelectingMr, // MR selection dialog
-    ShowingHelp, // Help popup visible
+    Normal,           // Viewing MRs and jobs
+    ViewingComments,  // Viewing MR comments instead of jobs
+    SelectingMr,      // MR selection dialog
+    ShowingHelp,      // Help popup visible
 }
 
 impl App {
@@ -83,6 +87,15 @@ impl App {
             }
         }
         None
+    }
+
+    pub fn get_selected_notes(&self) -> Option<&[Note]> {
+        self.get_selected_mr()
+            .map(|mr| mr.notes.as_slice())
+    }
+
+    pub fn is_viewing_comments(&self) -> bool {
+        self.mode == AppMode::ViewingComments
     }
 
     pub fn update(&mut self, action: Action) -> Option<Effect> {
@@ -216,6 +229,12 @@ impl App {
             }
 
             Action::Refresh => {
+                // Clear all cached data including notes
+                for mr in &mut self.tracked_mrs {
+                    mr.notes_loaded = false;
+                    mr.notes.clear();
+                }
+
                 self.status_message = Some("Refreshing...".to_string());
                 Some(Effect::RefreshAll {
                     project_id: self.project_id,
@@ -246,7 +265,10 @@ impl App {
                             mr: mr.clone(),
                             pipelines: Vec::new(),
                             jobs: HashMap::new(),
+                            notes: Vec::new(),
+                            notes_loaded: false,
                             selected_pipeline_index: 0,
+                            selected_note_index: 0,
                             loading: true,
                             error: None,
                         };
@@ -319,6 +341,73 @@ impl App {
 
             Action::HideHelp => {
                 self.mode = AppMode::Normal;
+                None
+            }
+
+            Action::ToggleCommentsView => {
+                self.mode = match self.mode {
+                    AppMode::ViewingComments => AppMode::Normal,
+                    AppMode::Normal => {
+                        // Check if we need to fetch notes
+                        if let Some(mr) = self.get_selected_mr() {
+                            if !mr.notes_loaded {
+                                let mr_index = self.selected_mr_index;
+                                let project_id = self.project_id;
+                                let mr_iid = mr.mr.iid;
+
+                                self.status_message = Some("Loading comments...".to_string());
+                                self.mode = AppMode::ViewingComments;
+
+                                return Some(Effect::FetchNotes {
+                                    mr_index,
+                                    project_id,
+                                    mr_iid,
+                                });
+                            }
+                        }
+                        AppMode::ViewingComments
+                    }
+                    _ => self.mode.clone(), // Don't toggle in other modes
+                };
+                None
+            }
+
+            Action::NotesLoaded { mr_index, notes } => {
+                if let Some(mr) = self.tracked_mrs.get_mut(mr_index) {
+                    mr.notes = notes;
+                    mr.notes_loaded = true;
+                    mr.selected_note_index = 0;
+                }
+                self.status_message = None;
+                None
+            }
+
+            Action::NextNote => {
+                if self.mode == AppMode::ViewingComments {
+                    // Get the length first to avoid borrow conflict
+                    let notes_len = self.get_selected_notes().map(|n| n.len()).unwrap_or(0);
+                    if notes_len > 0 {
+                        if let Some(mr) = self.tracked_mrs.get_mut(self.selected_mr_index) {
+                            mr.selected_note_index = (mr.selected_note_index + 1) % notes_len;
+                        }
+                    }
+                }
+                None
+            }
+
+            Action::PrevNote => {
+                if self.mode == AppMode::ViewingComments {
+                    // Get the length first to avoid borrow conflict
+                    let notes_len = self.get_selected_notes().map(|n| n.len()).unwrap_or(0);
+                    if notes_len > 0 {
+                        if let Some(mr) = self.tracked_mrs.get_mut(self.selected_mr_index) {
+                            mr.selected_note_index = mr
+                                .selected_note_index
+                                .checked_sub(1)
+                                .unwrap_or(notes_len - 1);
+                        }
+                    }
+                }
                 None
             }
 
@@ -413,7 +502,10 @@ mod tests {
             mr: mr1,
             pipelines: vec![],
             jobs: HashMap::new(),
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: false,
             error: None,
         });
@@ -422,7 +514,10 @@ mod tests {
             mr: mr2,
             pipelines: vec![],
             jobs: HashMap::new(),
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: false,
             error: None,
         });
@@ -445,7 +540,10 @@ mod tests {
             mr: mr1,
             pipelines: vec![],
             jobs: HashMap::new(),
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: false,
             error: None,
         });
@@ -454,7 +552,10 @@ mod tests {
             mr: mr2,
             pipelines: vec![],
             jobs: HashMap::new(),
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: false,
             error: None,
         });
@@ -490,7 +591,10 @@ mod tests {
             mr,
             pipelines: vec![],
             jobs: HashMap::new(),
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: true,
             error: None,
         });
@@ -521,7 +625,10 @@ mod tests {
             mr,
             pipelines: vec![pipeline],
             jobs: HashMap::new(),
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: false,
             error: None,
         });
@@ -564,7 +671,10 @@ mod tests {
             mr: mr1,
             pipelines: vec![],
             jobs: HashMap::new(),
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: false,
             error: None,
         });
@@ -573,7 +683,10 @@ mod tests {
             mr: mr2,
             pipelines: vec![],
             jobs: HashMap::new(),
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: false,
             error: None,
         });
@@ -595,7 +708,10 @@ mod tests {
             mr,
             pipelines: vec![],
             jobs: HashMap::new(),
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: false,
             error: None,
         });
@@ -620,7 +736,10 @@ mod tests {
             mr,
             pipelines: vec![pipeline],
             jobs: jobs_map,
+            notes: Vec::new(),
+            notes_loaded: false,
             selected_pipeline_index: 0,
+            selected_note_index: 0,
             loading: false,
             error: None,
         });

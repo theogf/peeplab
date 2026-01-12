@@ -1,3 +1,4 @@
+pub mod comments_list;
 pub mod help;
 pub mod job_list;
 pub mod mr_tabs;

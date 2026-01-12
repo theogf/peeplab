@@ -77,6 +77,11 @@ pub fn render(f: &mut Frame, area: Rect) {
             Span::styled("d", Style::default().fg(Color::Cyan)),
             Span::raw(" - Remove current MR from tracking"),
         ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("c", Style::default().fg(Color::Cyan)),
+            Span::raw(" - Toggle between jobs and comments view"),
+        ]),
         Line::from(""),
         Line::from(vec![Span::styled(
             "Status Indicators:",

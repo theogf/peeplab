@@ -1,5 +1,5 @@
 use crate::error::{LabpeepError, Result};
-use super::models::{Job, MergeRequest, Pipeline, Project};
+use super::models::{Job, MergeRequest, Note, Pipeline, Project};
 use reqwest::{Client, StatusCode, header};
 
 #[derive(Clone)]
@@ -131,6 +131,16 @@ impl GitLabClient {
                 Ok(response.text().await?)
             }
         }
+    }
+
+    pub async fn get_mr_notes(&self, project_id: u64, mr_iid: u64) -> Result<Vec<Note>> {
+        let url = format!(
+            "{}/projects/{}/merge_requests/{}/notes?per_page=100&sort=desc&order_by=created_at",
+            self.base_url, project_id, mr_iid
+        );
+
+        let response = self.client.get(&url).send().await?;
+        self.handle_response(response).await
     }
 }
 
@@ -331,6 +341,88 @@ mod tests {
                 assert!(msg.contains("rate limit"));
             }
             _ => panic!("Expected Network error for rate limit"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_get_mr_notes_success() {
+        let mut server = setup_mock_server().await;
+
+        let mock = server
+            .mock("GET", "/api/v4/projects/123/merge_requests/10/notes?per_page=100&sort=desc&order_by=created_at")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(r#"[
+                {
+                    "id": 301,
+                    "body": "Great work!",
+                    "author": {"id": 1, "username": "reviewer", "name": "Reviewer"},
+                    "created_at": "2024-01-01T10:00:00Z",
+                    "updated_at": "2024-01-01T10:00:00Z",
+                    "system": false,
+                    "noteable_id": 123,
+                    "noteable_type": "MergeRequest",
+                    "project_id": 456,
+                    "noteable_iid": 10,
+                    "resolvable": false,
+                    "confidential": false,
+                    "internal": false
+                }
+            ]"#)
+            .create_async()
+            .await;
+
+        let client = GitLabClient::new(&server.url(), "test-token").unwrap();
+        let result = client.get_mr_notes(123, 10).await;
+
+        mock.assert_async().await;
+        assert!(result.is_ok());
+        let notes = result.unwrap();
+        assert_eq!(notes.len(), 1);
+        assert_eq!(notes[0].body, "Great work!");
+        assert_eq!(notes[0].author.username, "reviewer");
+        assert!(!notes[0].system);
+    }
+
+    #[tokio::test]
+    async fn test_get_mr_notes_empty() {
+        let mut server = setup_mock_server().await;
+
+        let mock = server
+            .mock("GET", "/api/v4/projects/123/merge_requests/10/notes?per_page=100&sort=desc&order_by=created_at")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body("[]")
+            .create_async()
+            .await;
+
+        let client = GitLabClient::new(&server.url(), "test-token").unwrap();
+        let result = client.get_mr_notes(123, 10).await;
+
+        mock.assert_async().await;
+        assert!(result.is_ok());
+        let notes = result.unwrap();
+        assert_eq!(notes.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_get_mr_notes_not_found() {
+        let mut server = setup_mock_server().await;
+
+        let mock = server
+            .mock("GET", "/api/v4/projects/123/merge_requests/999/notes?per_page=100&sort=desc&order_by=created_at")
+            .with_status(404)
+            .create_async()
+            .await;
+
+        let client = GitLabClient::new(&server.url(), "test-token").unwrap();
+        let result = client.get_mr_notes(123, 999).await;
+
+        mock.assert_async().await;
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            LabpeepError::NotFound(_) => {}
+            _ => panic!("Expected NotFound error"),
         }
     }
 }

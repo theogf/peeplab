@@ -268,6 +268,25 @@ async fn handle_effect(
             });
         }
 
+        Effect::FetchNotes {
+            mr_index,
+            project_id,
+            mr_iid,
+        } => {
+            let action_tx = action_tx.clone();
+            let client = gitlab_client.clone();
+            tokio::spawn(async move {
+                match client.get_mr_notes(project_id, mr_iid).await {
+                    Ok(notes) => {
+                        let _ = action_tx.send(Action::NotesLoaded { mr_index, notes });
+                    }
+                    Err(e) => {
+                        let _ = action_tx.send(Action::ApiError(e.to_string()));
+                    }
+                }
+            });
+        }
+
         Effect::OpenInEditor(content) => {
             // This needs special handling - must suspend TUI
             tokio::task::spawn_blocking(move || editor::open_in_editor(&content))

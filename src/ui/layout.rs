@@ -19,7 +19,14 @@ pub fn render(f: &mut Frame, app: &App) {
 
     components::mr_tabs::render(f, app, chunks[0]);
     components::pipeline_list::render(f, app, chunks[1]);
-    components::job_list::render(f, app, chunks[2]);
+
+    // Toggle between jobs and comments view
+    if app.is_viewing_comments() {
+        components::comments_list::render(f, app, chunks[2]);
+    } else {
+        components::job_list::render(f, app, chunks[2]);
+    }
+
     components::status_bar::render(f, app, chunks[3]);
 
     // Render help popup on top if in help mode

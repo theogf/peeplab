@@ -68,6 +68,7 @@ pub fn map_event_to_action(event: AppEvent, app: &App) -> Action {
                     Action::Quit
                 }
                 KeyCode::Char('?') => Action::ShowHelp,
+                KeyCode::Char('c') => Action::ToggleCommentsView,
                 KeyCode::Left | KeyCode::Char('h') => Action::PrevMr,
                 KeyCode::Right | KeyCode::Char('l') => Action::NextMr,
                 KeyCode::Up | KeyCode::Char('k') => Action::PrevJob,
@@ -75,6 +76,23 @@ pub fn map_event_to_action(event: AppEvent, app: &App) -> Action {
                 KeyCode::Char('[') => Action::PrevPipeline,
                 KeyCode::Char(']') => Action::NextPipeline,
                 KeyCode::Enter => Action::OpenSelectedJobLog,
+                KeyCode::Char('r') => Action::Refresh,
+                KeyCode::Char('d') => Action::RemoveCurrentMr,
+                _ => Action::None,
+            },
+            AppMode::ViewingComments => match key.code {
+                KeyCode::Char('q') => Action::Quit,
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    Action::Quit
+                }
+                KeyCode::Char('?') => Action::ShowHelp,
+                KeyCode::Char('c') => Action::ToggleCommentsView,
+                KeyCode::Left | KeyCode::Char('h') => Action::PrevMr,
+                KeyCode::Right | KeyCode::Char('l') => Action::NextMr,
+                KeyCode::Up | KeyCode::Char('k') => Action::PrevNote,
+                KeyCode::Down | KeyCode::Char('j') => Action::NextNote,
+                KeyCode::Char('[') => Action::PrevPipeline,
+                KeyCode::Char(']') => Action::NextPipeline,
                 KeyCode::Char('r') => Action::Refresh,
                 KeyCode::Char('d') => Action::RemoveCurrentMr,
                 _ => Action::None,

@@ -1,4 +1,4 @@
-use crate::gitlab::{Job, MergeRequest, Pipeline};
+use crate::gitlab::{Job, MergeRequest, Note, Pipeline};
 
 #[derive(Debug, Clone)]
 pub enum Action {
@@ -17,6 +17,9 @@ pub enum Action {
     AddMr(u64), // Add MR by IID
     ShowHelp,
     HideHelp,
+    ToggleCommentsView,
+    NextNote,
+    PrevNote,
 
     // API Response Actions
     MergeRequestsLoaded(Vec<MergeRequest>),
@@ -32,6 +35,10 @@ pub enum Action {
     JobTraceLoaded {
         job_id: u64,
         trace: String,
+    },
+    NotesLoaded {
+        mr_index: usize,
+        notes: Vec<Note>,
     },
 
     // Error Actions
@@ -51,6 +58,7 @@ pub enum Effect {
     FetchPipelines { mr_index: usize, project_id: u64, mr_iid: u64 },
     FetchJobs { mr_index: usize, project_id: u64, pipeline_id: u64 },
     FetchJobTrace { project_id: u64, job_id: u64 },
+    FetchNotes { mr_index: usize, project_id: u64, mr_iid: u64 },
     OpenInEditor(String),
     RefreshAll { project_id: u64, source_branch: Option<String> },
 }

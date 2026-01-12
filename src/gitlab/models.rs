@@ -110,6 +110,25 @@ pub struct User {
     pub name: String,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Note {
+    pub id: u64,
+    pub body: String,
+    pub author: User,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub system: bool,
+    pub noteable_id: u64,
+    pub noteable_type: String,
+    pub project_id: u64,
+    pub noteable_iid: u64,
+    pub resolvable: bool,
+    #[serde(default)]
+    pub confidential: bool,
+    #[serde(default)]
+    pub internal: bool,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -250,5 +269,96 @@ mod tests {
         assert!(job.started_at.is_none());
         assert!(job.finished_at.is_none());
         assert!(job.duration.is_none());
+    }
+
+    #[test]
+    fn test_note_deserialization() {
+        let json = r#"{
+            "id": 301,
+            "body": "This is a comment",
+            "author": {
+                "id": 1,
+                "username": "testuser",
+                "name": "Test User"
+            },
+            "created_at": "2024-01-01T10:00:00Z",
+            "updated_at": "2024-01-01T11:00:00Z",
+            "system": false,
+            "noteable_id": 123,
+            "noteable_type": "MergeRequest",
+            "project_id": 456,
+            "noteable_iid": 10,
+            "resolvable": false,
+            "confidential": false,
+            "internal": false
+        }"#;
+
+        let note: Note = serde_json::from_str(json).unwrap();
+        assert_eq!(note.id, 301);
+        assert_eq!(note.body, "This is a comment");
+        assert_eq!(note.author.username, "testuser");
+        assert!(!note.system);
+        assert_eq!(note.noteable_id, 123);
+        assert_eq!(note.noteable_type, "MergeRequest");
+        assert!(!note.resolvable);
+        assert!(!note.confidential);
+        assert!(!note.internal);
+    }
+
+    #[test]
+    fn test_system_note_deserialization() {
+        let json = r#"{
+            "id": 302,
+            "body": "merged",
+            "author": {
+                "id": 2,
+                "username": "gitlab-bot",
+                "name": "GitLab Bot"
+            },
+            "created_at": "2024-01-01T12:00:00Z",
+            "updated_at": "2024-01-01T12:00:00Z",
+            "system": true,
+            "noteable_id": 123,
+            "noteable_type": "MergeRequest",
+            "project_id": 456,
+            "noteable_iid": 10,
+            "resolvable": false
+        }"#;
+
+        let note: Note = serde_json::from_str(json).unwrap();
+        assert_eq!(note.id, 302);
+        assert_eq!(note.body, "merged");
+        assert!(note.system);
+        assert_eq!(note.author.username, "gitlab-bot");
+        assert!(!note.confidential); // Default value
+        assert!(!note.internal); // Default value
+    }
+
+    #[test]
+    fn test_note_with_default_fields() {
+        // Test that confidential and internal default to false when missing
+        let json = r#"{
+            "id": 303,
+            "body": "Test comment",
+            "author": {
+                "id": 3,
+                "username": "reviewer",
+                "name": "Reviewer"
+            },
+            "created_at": "2024-01-01T13:00:00Z",
+            "updated_at": "2024-01-01T13:00:00Z",
+            "system": false,
+            "noteable_id": 123,
+            "noteable_type": "MergeRequest",
+            "project_id": 456,
+            "noteable_iid": 10,
+            "resolvable": true
+        }"#;
+
+        let note: Note = serde_json::from_str(json).unwrap();
+        assert_eq!(note.id, 303);
+        assert!(!note.confidential);
+        assert!(!note.internal);
+        assert!(note.resolvable);
     }
 }
