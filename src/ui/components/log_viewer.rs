@@ -1,13 +1,16 @@
 use crate::app::App;
 use ratatui::{
     layout::Rect,
-    style::{Color, Modifier, Style},
-    text::{Line, Span},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    style::{Color, Style},
+    text::Line,
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
+    // Clear the background to prevent rendering artifacts
+    f.render_widget(Clear, area);
+
     let log_content = match &app.log_content {
         Some(content) => content,
         None => {
@@ -30,7 +33,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         .lines()
         .map(|line| {
             // Use ansi-to-tui to parse ANSI escape sequences
-            match ansi_to_tui::IntoText::into_text(line) {
+            match ansi_to_tui::IntoText::into_text(&line) {
                 Ok(text) => {
                     // Convert ratatui Text to Line
                     if text.lines.is_empty() {

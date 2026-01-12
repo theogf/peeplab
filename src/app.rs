@@ -1,5 +1,5 @@
 use crate::events::actions::{Action, Effect};
-use crate::gitlab::{Job, MergeRequest, Note, Pipeline};
+use crate::gitlab::{Job, JobStatus, MergeRequest, Note, Pipeline};
 use std::collections::HashMap;
 
 pub struct App {
@@ -324,9 +324,20 @@ impl App {
             Action::JobsLoaded {
                 mr_index,
                 pipeline_id,
-                jobs,
+                mut jobs,
             } => {
                 if let Some(mr) = self.tracked_mrs.get_mut(mr_index) {
+                    // Sort jobs: failed first, then running, pending, etc.
+                    jobs.sort_by_key(|job| match job.status {
+                        JobStatus::Failed => 0,
+                        JobStatus::Running => 1,
+                        JobStatus::Pending => 2,
+                        JobStatus::Canceled => 3,
+                        JobStatus::Created => 4,
+                        JobStatus::Manual => 5,
+                        JobStatus::Success => 6,
+                        JobStatus::Skipped => 7,
+                    });
                     mr.jobs.insert(pipeline_id, jobs);
                 }
                 self.last_refresh = Some(chrono::Utc::now());
@@ -474,6 +485,13 @@ impl App {
                                 .unwrap_or(notes_len - 1);
                         }
                     }
+                }
+                None
+            }
+
+            Action::OpenMrInBrowser => {
+                if let Some(mr) = self.get_selected_mr() {
+                    return Some(Effect::OpenUrl(mr.mr.web_url.clone()));
                 }
                 None
             }

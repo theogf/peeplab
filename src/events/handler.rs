@@ -78,6 +78,7 @@ pub fn map_event_to_action(event: AppEvent, app: &App) -> Action {
                 KeyCode::Enter => Action::OpenSelectedJobLog,
                 KeyCode::Char('r') => Action::Refresh,
                 KeyCode::Char('d') => Action::RemoveCurrentMr,
+                KeyCode::Char('o') => Action::OpenMrInBrowser,
                 _ => Action::None,
             },
             AppMode::ViewingComments => match key.code {
@@ -95,6 +96,19 @@ pub fn map_event_to_action(event: AppEvent, app: &App) -> Action {
                 KeyCode::Char(']') => Action::NextPipeline,
                 KeyCode::Char('r') => Action::Refresh,
                 KeyCode::Char('d') => Action::RemoveCurrentMr,
+                _ => Action::None,
+            },
+            AppMode::ViewingLog => match key.code {
+                KeyCode::Char('q') | KeyCode::Esc => Action::CloseLogViewer,
+                KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    Action::Quit
+                }
+                KeyCode::Up | KeyCode::Char('k') => Action::ScrollLogUp,
+                KeyCode::Down | KeyCode::Char('j') => Action::ScrollLogDown,
+                KeyCode::PageUp => Action::ScrollLogPageUp,
+                KeyCode::PageDown => Action::ScrollLogPageDown,
+                KeyCode::Home => Action::ScrollLogHome,
+                KeyCode::End => Action::ScrollLogEnd,
                 _ => Action::None,
             },
             AppMode::SelectingMr => match key.code {

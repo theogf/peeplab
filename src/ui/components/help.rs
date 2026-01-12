@@ -65,7 +65,7 @@ pub fn render(f: &mut Frame, area: Rect) {
         Line::from(vec![
             Span::raw("  "),
             Span::styled("Enter", Style::default().fg(Color::Cyan)),
-            Span::raw(" - Open selected job log in editor"),
+            Span::raw(" - View selected job log"),
         ]),
         Line::from(vec![
             Span::raw("  "),
@@ -81,6 +81,35 @@ pub fn render(f: &mut Frame, area: Rect) {
             Span::raw("  "),
             Span::styled("c", Style::default().fg(Color::Cyan)),
             Span::raw(" - Toggle between jobs and comments view"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("o", Style::default().fg(Color::Cyan)),
+            Span::raw(" - Open current MR in browser"),
+        ]),
+        Line::from(""),
+        Line::from(vec![Span::styled(
+            "Log Viewer:",
+            Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+        )]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("q/Esc", Style::default().fg(Color::Cyan)),
+            Span::raw(" - Close log viewer"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("↑/↓", Style::default().fg(Color::Cyan)),
+            Span::raw(" or "),
+            Span::styled("k/j", Style::default().fg(Color::Cyan)),
+            Span::raw(" - Scroll log"),
+        ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("PgUp/PgDn", Style::default().fg(Color::Cyan)),
+            Span::raw(", "),
+            Span::styled("Home/End", Style::default().fg(Color::Cyan)),
+            Span::raw(" - Jump in log"),
         ]),
         Line::from(""),
         Line::from(vec![Span::styled(

@@ -33,4 +33,9 @@ pub fn render(f: &mut Frame, app: &App) {
     if app.mode == AppMode::ShowingHelp {
         components::help::render(f, f.area());
     }
+
+    // Render log viewer on top if in log viewing mode
+    if app.mode == AppMode::ViewingLog {
+        components::log_viewer::render(f, app, f.area());
+    }
 }

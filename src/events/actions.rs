@@ -27,6 +27,7 @@ pub enum Action {
     ScrollLogPageDown,
     ScrollLogHome,
     ScrollLogEnd,
+    OpenMrInBrowser,
 
     // API Response Actions
     MergeRequestsLoaded(Vec<MergeRequest>),
@@ -69,4 +70,5 @@ pub enum Effect {
     FetchNotes { mr_index: usize, project_id: u64, mr_iid: u64 },
     OpenInEditor(String),
     RefreshAll { project_id: u64, source_branch: Option<String> },
+    OpenUrl(String),
 }

@@ -73,8 +73,8 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
             let time_ago = format_relative_time(note.created_at);
 
-            // Build header line
-            let header = Line::from(vec![
+            // Build header line with optional file/line info
+            let mut header_spans = vec![
                 Span::styled(
                     if note.system {
                         "System"
@@ -85,7 +85,27 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
                 ),
                 Span::raw(" • "),
                 Span::styled(time_ago, Style::default().fg(Color::DarkGray)),
-            ]);
+            ];
+
+            // Add file and line information if available
+            if let Some(position) = &note.position {
+                if let Some(new_path) = &position.new_path {
+                    header_spans.push(Span::raw(" • "));
+                    header_spans.push(Span::styled(
+                        new_path.clone(),
+                        Style::default().fg(Color::Yellow),
+                    ));
+
+                    if let Some(new_line) = position.new_line {
+                        header_spans.push(Span::styled(
+                            format!(":{}", new_line),
+                            Style::default().fg(Color::Yellow),
+                        ));
+                    }
+                }
+            }
+
+            let header = Line::from(header_spans);
 
             // Process body - handle multi-line and wrap
             let body_lines: Vec<Line> = note

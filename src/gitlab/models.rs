@@ -111,6 +111,24 @@ pub struct User {
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct Position {
+    #[serde(default)]
+    pub base_sha: Option<String>,
+    #[serde(default)]
+    pub start_sha: Option<String>,
+    #[serde(default)]
+    pub head_sha: Option<String>,
+    #[serde(default)]
+    pub old_path: Option<String>,
+    #[serde(default)]
+    pub new_path: Option<String>,
+    #[serde(default)]
+    pub old_line: Option<u32>,
+    #[serde(default)]
+    pub new_line: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Note {
     pub id: u64,
     pub body: String,
@@ -127,6 +145,8 @@ pub struct Note {
     pub confidential: bool,
     #[serde(default)]
     pub internal: bool,
+    #[serde(default)]
+    pub position: Option<Position>,
 }
 
 #[cfg(test)]
