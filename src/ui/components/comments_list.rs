@@ -46,7 +46,10 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
 
     let notes = &selected_mr.notes;
 
-    if notes.is_empty() {
+    // Filter out system notes
+    let user_notes: Vec<_> = notes.iter().filter(|note| !note.system).collect();
+
+    if user_notes.is_empty() {
         let block = Block::default()
             .borders(Borders::ALL)
             .title("Comments")
@@ -58,31 +61,18 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
     // Calculate available width for text wrapping
     let content_width = area.width.saturating_sub(4) as usize; // Account for borders and padding
 
-    let items: Vec<ListItem> = notes
+    let items: Vec<ListItem> = user_notes
         .iter()
         .map(|note| {
-            let author_style = if note.system {
-                Style::default()
-                    .fg(Color::DarkGray)
-                    .add_modifier(Modifier::ITALIC)
-            } else {
-                Style::default()
-                    .fg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD)
-            };
+            let author_style = Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD);
 
             let time_ago = format_relative_time(note.created_at);
 
             // Build header line with optional file/line info
             let mut header_spans = vec![
-                Span::styled(
-                    if note.system {
-                        "System"
-                    } else {
-                        &note.author.name
-                    },
-                    author_style,
-                ),
+                Span::styled(&note.author.name, author_style),
                 Span::raw(" • "),
                 Span::styled(time_ago, Style::default().fg(Color::DarkGray)),
             ];
@@ -155,7 +145,9 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         .highlight_symbol("> ");
 
     let mut state = ListState::default();
-    state.select(Some(selected_mr.selected_note_index));
+    // Clamp the selected index to the number of user notes
+    let clamped_index = selected_mr.selected_note_index.min(user_notes.len().saturating_sub(1));
+    state.select(Some(clamped_index));
 
     f.render_stateful_widget(list, area, &mut state);
 }

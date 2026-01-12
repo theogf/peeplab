@@ -2,6 +2,13 @@ use crate::events::actions::{Action, Effect};
 use crate::gitlab::{Job, JobStatus, MergeRequest, Note, Pipeline};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum TimestampDisplayMode {
+    Hidden,      // Don't show timestamps
+    DateOnly,    // Show date only (e.g., "2024-01-15")
+    Full,        // Show full timestamp (e.g., "2024-01-15 10:30:45")
+}
+
 pub struct App {
     // UI State
     pub should_quit: bool,
@@ -21,6 +28,7 @@ pub struct App {
     pub log_content: Option<String>,
     pub log_scroll_offset: usize,
     pub log_job_name: Option<String>,
+    pub timestamp_mode: TimestampDisplayMode,
 
     // Status
     pub status_message: Option<String>,
@@ -70,6 +78,7 @@ impl App {
             log_content: None,
             log_scroll_offset: 0,
             log_job_name: None,
+            timestamp_mode: TimestampDisplayMode::Hidden,
             status_message,
             error_message: None,
             last_refresh: None,
@@ -406,6 +415,17 @@ impl App {
                 None
             }
 
+            Action::ToggleTimestampMode => {
+                if self.mode == AppMode::ViewingLog {
+                    self.timestamp_mode = match self.timestamp_mode {
+                        TimestampDisplayMode::Hidden => TimestampDisplayMode::DateOnly,
+                        TimestampDisplayMode::DateOnly => TimestampDisplayMode::Full,
+                        TimestampDisplayMode::Full => TimestampDisplayMode::Hidden,
+                    };
+                }
+                None
+            }
+
             Action::ApiError(error) => {
                 self.error_message = Some(error.clone());
                 self.status_message = None;
@@ -462,11 +482,14 @@ impl App {
 
             Action::NextNote => {
                 if self.mode == AppMode::ViewingComments {
-                    // Get the length first to avoid borrow conflict
-                    let notes_len = self.get_selected_notes().map(|n| n.len()).unwrap_or(0);
-                    if notes_len > 0 {
+                    // Get the length of user notes (excluding system notes)
+                    let user_notes_len = self
+                        .get_selected_notes()
+                        .map(|notes| notes.iter().filter(|n| !n.system).count())
+                        .unwrap_or(0);
+                    if user_notes_len > 0 {
                         if let Some(mr) = self.tracked_mrs.get_mut(self.selected_mr_index) {
-                            mr.selected_note_index = (mr.selected_note_index + 1) % notes_len;
+                            mr.selected_note_index = (mr.selected_note_index + 1) % user_notes_len;
                         }
                     }
                 }
@@ -475,14 +498,17 @@ impl App {
 
             Action::PrevNote => {
                 if self.mode == AppMode::ViewingComments {
-                    // Get the length first to avoid borrow conflict
-                    let notes_len = self.get_selected_notes().map(|n| n.len()).unwrap_or(0);
-                    if notes_len > 0 {
+                    // Get the length of user notes (excluding system notes)
+                    let user_notes_len = self
+                        .get_selected_notes()
+                        .map(|notes| notes.iter().filter(|n| !n.system).count())
+                        .unwrap_or(0);
+                    if user_notes_len > 0 {
                         if let Some(mr) = self.tracked_mrs.get_mut(self.selected_mr_index) {
                             mr.selected_note_index = mr
                                 .selected_note_index
                                 .checked_sub(1)
-                                .unwrap_or(notes_len - 1);
+                                .unwrap_or(user_notes_len - 1);
                         }
                     }
                 }

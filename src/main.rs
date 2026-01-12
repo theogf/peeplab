@@ -1,10 +1,12 @@
 use anyhow::Result;
 use crossterm::{
+    cursor,
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
+use std::io::Write;
 use std::time::Duration;
 use tokio::sync::mpsc;
 
@@ -144,8 +146,15 @@ async fn main() -> Result<()> {
 
     // Restore terminal
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
-    terminal.show_cursor()?;
+    execute!(
+        terminal.backend_mut(),
+        LeaveAlternateScreen,
+        cursor::Show,
+        cursor::MoveToColumn(0)
+    )?;
+
+    // Flush stdout to ensure all commands are processed
+    io::stdout().flush()?;
 
     result
 }

@@ -111,6 +111,11 @@ pub fn render(f: &mut Frame, area: Rect) {
             Span::styled("Home/End", Style::default().fg(Color::Cyan)),
             Span::raw(" - Jump in log"),
         ]),
+        Line::from(vec![
+            Span::raw("  "),
+            Span::styled("t", Style::default().fg(Color::Cyan)),
+            Span::raw(" - Toggle timestamp display (hidden/date/full)"),
+        ]),
         Line::from(""),
         Line::from(vec![Span::styled(
             "Status Indicators:",

@@ -109,6 +109,7 @@ pub fn map_event_to_action(event: AppEvent, app: &App) -> Action {
                 KeyCode::PageDown => Action::ScrollLogPageDown,
                 KeyCode::Home => Action::ScrollLogHome,
                 KeyCode::End => Action::ScrollLogEnd,
+                KeyCode::Char('t') => Action::ToggleTimestampMode,
                 _ => Action::None,
             },
             AppMode::SelectingMr => match key.code {

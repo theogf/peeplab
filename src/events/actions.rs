@@ -27,6 +27,7 @@ pub enum Action {
     ScrollLogPageDown,
     ScrollLogHome,
     ScrollLogEnd,
+    ToggleTimestampMode,
     OpenMrInBrowser,
 
     // API Response Actions

@@ -1,15 +1,75 @@
-use crate::app::App;
+use crate::app::{App, TimestampDisplayMode};
 use ratatui::{
-    layout::Rect,
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style},
     text::Line,
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
     Frame,
 };
+use regex::Regex;
+
+/// Parse and format log line based on timestamp display mode
+fn process_log_line(line: &str, mode: &TimestampDisplayMode) -> String {
+    // Regex to match ISO timestamps at the start of the line
+    // Matches patterns like: 2024-01-15T10:30:45.123Z or 2024-01-15T10:30:45+00:00
+    let re = Regex::new(r"^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?\s+").unwrap();
+
+    match mode {
+        TimestampDisplayMode::Hidden => {
+            // Strip timestamp completely
+            re.replace(line, "").to_string()
+        }
+        TimestampDisplayMode::DateOnly => {
+            // Show only the date part
+            if let Some(caps) = re.captures(line) {
+                let date = &caps[1];
+                let rest = &line[caps.get(0).unwrap().end()..];
+                format!("{} {}", date, rest)
+            } else {
+                line.to_string()
+            }
+        }
+        TimestampDisplayMode::Full => {
+            // Show date and time (but not milliseconds/timezone)
+            if let Some(caps) = re.captures(line) {
+                let date = &caps[1];
+                let time = &caps[2];
+                let rest = &line[caps.get(0).unwrap().end()..];
+                format!("{} {} {}", date, time, rest)
+            } else {
+                line.to_string()
+            }
+        }
+    }
+}
+
+/// Helper function to create a centered rectangle
+fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
+    let popup_layout = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([
+            Constraint::Percentage((100 - percent_y) / 2),
+            Constraint::Percentage(percent_y),
+            Constraint::Percentage((100 - percent_y) / 2),
+        ])
+        .split(r);
+
+    Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([
+            Constraint::Percentage((100 - percent_x) / 2),
+            Constraint::Percentage(percent_x),
+            Constraint::Percentage((100 - percent_x) / 2),
+        ])
+        .split(popup_layout[1])[1]
+}
 
 pub fn render(f: &mut Frame, app: &App, area: Rect) {
+    // Calculate the log viewer area (90% width, 90% height, centered)
+    let log_area = centered_rect(90, 90, area);
+
     // Clear the background to prevent rendering artifacts
-    f.render_widget(Clear, area);
+    f.render_widget(Clear, log_area);
 
     let log_content = match &app.log_content {
         Some(content) => content,
@@ -18,7 +78,7 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
                 .borders(Borders::ALL)
                 .title("Job Log")
                 .style(Style::default().fg(Color::Gray));
-            f.render_widget(block, area);
+            f.render_widget(block, log_area);
             return;
         }
     };
@@ -28,12 +88,15 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         .as_deref()
         .unwrap_or("Unknown Job");
 
-    // Parse ANSI codes and convert to ratatui Lines
+    // Process timestamps and parse ANSI codes, converting to ratatui Lines
     let lines: Vec<Line> = log_content
         .lines()
         .map(|line| {
-            // Use ansi-to-tui to parse ANSI escape sequences
-            match ansi_to_tui::IntoText::into_text(&line) {
+            // First, process the timestamp based on display mode
+            let processed_line = process_log_line(line, &app.timestamp_mode);
+
+            // Then parse ANSI escape sequences
+            match ansi_to_tui::IntoText::into_text(&processed_line) {
                 Ok(text) => {
                     // Convert ratatui Text to Line
                     if text.lines.is_empty() {
@@ -44,14 +107,14 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
                 }
                 Err(_) => {
                     // If parsing fails, show raw text
-                    Line::from(line.to_string())
+                    Line::from(processed_line)
                 }
             }
         })
         .collect();
 
     // Calculate visible range based on scroll offset
-    let content_height = area.height.saturating_sub(2) as usize; // Account for borders
+    let content_height = log_area.height.saturating_sub(2) as usize; // Account for borders
     let total_lines = lines.len();
     let max_offset = total_lines.saturating_sub(content_height);
     let scroll_offset = app.log_scroll_offset.min(max_offset);
@@ -75,10 +138,17 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         String::new()
     };
 
+    let timestamp_indicator = match &app.timestamp_mode {
+        TimestampDisplayMode::Hidden => "[Timestamps: Hidden]",
+        TimestampDisplayMode::DateOnly => "[Timestamps: Date]",
+        TimestampDisplayMode::Full => "[Timestamps: Full]",
+    };
+
     let title = format!(
-        "Job Log: {}{}(q/Esc to close, ↑↓/jk to scroll, Home/End, PgUp/PgDn)",
+        "Job Log: {}{}{} (q/Esc to close, ↑↓/jk scroll, t toggle time, PgUp/PgDn/Home/End)",
         job_name,
-        if scroll_indicator.is_empty() { " " } else { &scroll_indicator }
+        if scroll_indicator.is_empty() { " " } else { &scroll_indicator },
+        timestamp_indicator
     );
 
     let paragraph = Paragraph::new(visible_lines)
@@ -90,5 +160,5 @@ pub fn render(f: &mut Frame, app: &App, area: Rect) {
         )
         .wrap(Wrap { trim: false });
 
-    f.render_widget(paragraph, area);
+    f.render_widget(paragraph, log_area);
 }
