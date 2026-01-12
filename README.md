@@ -91,6 +91,7 @@ labpeep
 
 ### Keyboard Controls
 
+- `?`: Show help popup with all keyboard shortcuts
 - `q` or `Ctrl+C`: Quit the application
 - `←` / `→` or `h` / `l`: Switch between merge request tabs
 - `↑` / `↓` or `k` / `j`: Navigate jobs in the selected pipeline
@@ -98,6 +99,8 @@ labpeep
 - `Enter`: Open the selected job's log in your editor
 - `r`: Refresh all data
 - `d`: Remove the current MR from tracking
+
+**Tip:** Press `?` at any time to see the help popup with all available commands!
 
 ### Branch-Focused Mode
 
