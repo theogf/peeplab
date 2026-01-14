@@ -27,6 +27,8 @@ pub struct AppConfig {
     pub max_tracked_mrs: usize,
     #[serde(default = "default_focus_current_branch")]
     pub focus_current_branch: bool,
+    #[serde(default = "default_auto_refresh_interval_minutes")]
+    pub auto_refresh_interval_minutes: u64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -59,6 +61,10 @@ fn default_focus_current_branch() -> bool {
     true
 }
 
+fn default_auto_refresh_interval_minutes() -> u64 {
+    1
+}
+
 fn default_relative_timestamps() -> bool {
     true
 }
@@ -74,6 +80,7 @@ impl Default for AppConfig {
             refresh_interval: default_refresh_interval(),
             max_tracked_mrs: default_max_tracked_mrs(),
             focus_current_branch: default_focus_current_branch(),
+            auto_refresh_interval_minutes: default_auto_refresh_interval_minutes(),
         }
     }
 }
@@ -120,6 +127,7 @@ mod tests {
         assert_eq!(settings.gitlab.instance_url, "https://gitlab.com");
         assert_eq!(settings.app.refresh_interval, 30);
         assert_eq!(settings.app.max_tracked_mrs, 5);
+        assert_eq!(settings.app.auto_refresh_interval_minutes, 1);
         assert!(settings.ui.relative_timestamps);
         assert_eq!(settings.ui.theme, "dark");
         assert!(settings.editor.custom_editor.is_none());
@@ -136,6 +144,7 @@ mod tests {
             [app]
             refresh_interval = 60
             max_tracked_mrs = 10
+            auto_refresh_interval_minutes = 5
 
             [ui]
             relative_timestamps = false
@@ -151,6 +160,7 @@ mod tests {
         assert_eq!(settings.gitlab.instance_url, "https://gitlab.example.com");
         assert_eq!(settings.app.refresh_interval, 60);
         assert_eq!(settings.app.max_tracked_mrs, 10);
+        assert_eq!(settings.app.auto_refresh_interval_minutes, 5);
         assert!(!settings.ui.relative_timestamps);
         assert_eq!(settings.ui.theme, "light");
         assert_eq!(settings.editor.custom_editor, Some("nvim".to_string()));
@@ -193,6 +203,7 @@ mod tests {
         let config = AppConfig::default();
         assert_eq!(config.refresh_interval, 30);
         assert_eq!(config.max_tracked_mrs, 5);
+        assert_eq!(config.auto_refresh_interval_minutes, 1);
     }
 
     #[test]

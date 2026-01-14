@@ -1,6 +1,7 @@
 use crate::events::actions::{Action, Effect};
 use crate::gitlab::{Job, JobStatus, MergeRequest, Note, Pipeline};
 use std::collections::HashMap;
+use std::time::Instant;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TimestampDisplayMode {
@@ -40,6 +41,10 @@ pub struct App {
     pub status_message: Option<String>,
     pub error_message: Option<String>,
     pub last_refresh: Option<chrono::DateTime<chrono::Utc>>,
+
+    // Auto-refresh
+    pub last_auto_refresh: Instant,
+    pub auto_refresh_interval_minutes: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -67,7 +72,7 @@ pub enum AppMode {
 }
 
 impl App {
-    pub fn new(project_id: u64, current_branch: Option<String>, focus_current_branch: bool) -> Self {
+    pub fn new(project_id: u64, current_branch: Option<String>, focus_current_branch: bool, auto_refresh_interval_minutes: u64) -> Self {
         let status_message = if focus_current_branch && current_branch.is_some() {
             Some(format!("Loading MR for branch '{}'...", current_branch.as_ref().unwrap()))
         } else {
@@ -96,6 +101,8 @@ impl App {
             status_message,
             error_message: None,
             last_refresh: None,
+            last_auto_refresh: Instant::now(),
+            auto_refresh_interval_minutes,
         }
     }
 
@@ -300,6 +307,9 @@ impl App {
             }
 
             Action::Refresh => {
+                // Reset auto-refresh timer on manual refresh
+                self.last_auto_refresh = Instant::now();
+
                 // Clear all cached data including notes and job logs
                 for mr in &mut self.tracked_mrs {
                     mr.notes_loaded = false;
@@ -660,8 +670,33 @@ impl App {
             }
 
             Action::Tick => {
-                // Auto-refresh logic could go here
-                None
+                // Check if it's time for an auto-refresh
+                let elapsed = self.last_auto_refresh.elapsed();
+                let refresh_interval = std::time::Duration::from_secs(self.auto_refresh_interval_minutes * 60);
+
+                if elapsed >= refresh_interval {
+                    // Trigger auto-refresh
+                    self.last_auto_refresh = Instant::now();
+
+                    // Clear all cached data including notes and job logs
+                    for mr in &mut self.tracked_mrs {
+                        mr.notes_loaded = false;
+                        mr.notes.clear();
+                        mr.job_logs_cache.clear();
+                    }
+
+                    self.status_message = Some("Auto-refreshing...".to_string());
+                    Some(Effect::RefreshAll {
+                        project_id: self.project_id,
+                        source_branch: if self.focus_current_branch {
+                            self.current_branch.clone()
+                        } else {
+                            None
+                        },
+                    })
+                } else {
+                    None
+                }
             }
 
             _ => None,
@@ -672,7 +707,8 @@ impl App {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::gitlab::{JobStatus, PipelineStatus, User};
+    use crate::gitlab::{JobStatus, PipelineStatus};
+    use crate::gitlab::models::User;
     use chrono::Utc;
 
     fn create_test_mr(id: u64, iid: u64, title: &str) -> MergeRequest {
@@ -720,7 +756,7 @@ mod tests {
 
     #[test]
     fn test_app_new() {
-        let app = App::new(123, None, false);
+        let app = App::new(123, None, false, 1);
         assert_eq!(app.project_id, 123);
         assert!(!app.should_quit);
         assert_eq!(app.selected_mr_index, 0);
@@ -731,7 +767,7 @@ mod tests {
 
     #[test]
     fn test_quit_action() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
         assert!(!app.should_quit);
 
         app.update(Action::Quit);
@@ -740,7 +776,7 @@ mod tests {
 
     #[test]
     fn test_next_mr() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
 
         // Add some MRs
         let mr1 = create_test_mr(1, 10, "MR 1");
@@ -781,7 +817,7 @@ mod tests {
 
     #[test]
     fn test_prev_mr() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
 
         let mr1 = create_test_mr(1, 10, "MR 1");
         let mr2 = create_test_mr(2, 20, "MR 2");
@@ -821,7 +857,7 @@ mod tests {
 
     #[test]
     fn test_merge_requests_loaded() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
 
         let mrs = vec![
             create_test_mr(1, 10, "MR 1"),
@@ -836,7 +872,7 @@ mod tests {
 
     #[test]
     fn test_pipelines_loaded() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
 
         let mr = create_test_mr(1, 10, "Test MR");
         app.tracked_mrs.push(TrackedMergeRequest {
@@ -869,7 +905,7 @@ mod tests {
 
     #[test]
     fn test_jobs_loaded() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
 
         let mr = create_test_mr(1, 10, "Test MR");
         let pipeline = create_test_pipeline(100, PipelineStatus::Running);
@@ -901,13 +937,14 @@ mod tests {
         assert!(app.tracked_mrs[0].jobs.contains_key(&100));
         let loaded_jobs = &app.tracked_mrs[0].jobs[&100];
         assert_eq!(loaded_jobs.len(), 2);
-        assert_eq!(loaded_jobs[0].name, "build");
-        assert_eq!(loaded_jobs[1].name, "test");
+        // Jobs are sorted by status: Failed jobs come first
+        assert_eq!(loaded_jobs[0].name, "test"); // Failed
+        assert_eq!(loaded_jobs[1].name, "build"); // Success
     }
 
     #[test]
     fn test_api_error() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
 
         app.update(Action::ApiError("Test error".to_string()));
         assert_eq!(app.error_message, Some("Test error".to_string()));
@@ -916,7 +953,7 @@ mod tests {
 
     #[test]
     fn test_remove_current_mr() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
 
         let mr1 = create_test_mr(1, 10, "MR 1");
         let mr2 = create_test_mr(2, 20, "MR 2");
@@ -955,7 +992,7 @@ mod tests {
 
     #[test]
     fn test_get_selected_mr() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
 
         assert!(app.get_selected_mr().is_none());
 
@@ -980,7 +1017,7 @@ mod tests {
 
     #[test]
     fn test_get_selected_jobs() {
-        let mut app = App::new(123, None, false);
+        let mut app = App::new(123, None, false, 1);
 
         let mr = create_test_mr(1, 10, "Test MR");
         let pipeline = create_test_pipeline(100, PipelineStatus::Running);

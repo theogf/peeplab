@@ -120,7 +120,7 @@ async fn main() -> Result<()> {
     terminal.hide_cursor()?;
 
     // Create app state
-    let mut app = App::new(project_id, current_branch, settings.app.focus_current_branch);
+    let mut app = App::new(project_id, current_branch, settings.app.focus_current_branch, settings.app.auto_refresh_interval_minutes);
 
     // Create event handler
     let mut event_handler = EventHandler::new(Duration::from_secs(settings.app.refresh_interval));
