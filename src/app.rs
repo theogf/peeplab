@@ -46,6 +46,7 @@ pub struct App {
     pub last_auto_refresh: Instant,
     pub auto_refresh_interval_minutes: u64,
     pub refetch_notes_after_refresh: bool, // Flag to refetch notes after refresh completes
+    pub selected_note_id_before_refresh: Option<u64>, // Track selected note ID to restore after refresh
 }
 
 #[derive(Debug, Clone)]
@@ -105,6 +106,7 @@ impl App {
             last_auto_refresh: Instant::now(),
             auto_refresh_interval_minutes,
             refetch_notes_after_refresh: false,
+            selected_note_id_before_refresh: None,
         }
     }
 
@@ -133,6 +135,13 @@ impl App {
     pub fn get_selected_notes(&self) -> Option<&[Note]> {
         self.get_selected_mr()
             .map(|mr| mr.notes.as_slice())
+    }
+
+    pub fn get_selected_note_id(&self) -> Option<u64> {
+        self.get_selected_mr().and_then(|mr| {
+            let user_notes: Vec<_> = mr.notes.iter().filter(|n| !n.system).collect();
+            user_notes.get(mr.selected_note_index).map(|note| note.id)
+        })
     }
 
     pub fn is_viewing_comments(&self) -> bool {
@@ -314,6 +323,11 @@ impl App {
 
                 // Set flag to refetch notes after refresh if currently viewing comments
                 self.refetch_notes_after_refresh = self.mode == AppMode::ViewingComments;
+
+                // Save the currently selected note ID if viewing comments
+                if self.refetch_notes_after_refresh {
+                    self.selected_note_id_before_refresh = self.get_selected_note_id();
+                }
 
                 // Clear all cached data including notes and job logs
                 for mr in &mut self.tracked_mrs {
@@ -637,7 +651,21 @@ impl App {
                 if let Some(mr) = self.tracked_mrs.get_mut(mr_index) {
                     mr.notes = notes;
                     mr.notes_loaded = true;
-                    mr.selected_note_index = 0;
+
+                    // Try to restore the previously selected note
+                    if let Some(selected_note_id) = self.selected_note_id_before_refresh.take() {
+                        // Filter user notes (non-system) and find the index of the previously selected note
+                        let user_notes: Vec<_> = mr.notes.iter().filter(|n| !n.system).collect();
+                        let restored_index = user_notes
+                            .iter()
+                            .position(|note| note.id == selected_note_id)
+                            .unwrap_or(0); // Default to 0 if note not found
+
+                        mr.selected_note_index = restored_index;
+                    } else {
+                        // No note to restore, default to 0
+                        mr.selected_note_index = 0;
+                    }
 
                     // After notes are loaded following a refresh, continue to fetch jobs
                     if let Some(pipeline) = mr.pipelines.first() {
@@ -706,6 +734,11 @@ impl App {
 
                     // Set flag to refetch notes after refresh if currently viewing comments
                     self.refetch_notes_after_refresh = self.mode == AppMode::ViewingComments;
+
+                    // Save the currently selected note ID if viewing comments
+                    if self.refetch_notes_after_refresh {
+                        self.selected_note_id_before_refresh = self.get_selected_note_id();
+                    }
 
                     // Clear all cached data including notes and job logs
                     for mr in &mut self.tracked_mrs {
