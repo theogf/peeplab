@@ -7,9 +7,10 @@ A terminal user interface (TUI) application for monitoring GitLab CI/CD pipeline
 - **Monitor Multiple MRs**: Track multiple merge requests simultaneously in tabs
 - **Pipeline Status**: View pipeline statuses with visual indicators (✓/✗/⟳)
 - **Job Details**: See all jobs in a pipeline with their statuses and durations
-- **Log Viewing**: Open failed job logs directly in your preferred editor
-- **Auto-refresh**: Automatically refresh pipeline statuses at configurable intervals
+- **Internal Log Viewer**: View job logs with search and highlighting in a built-in viewer
+- **Auto-refresh**: Automatically refresh all data every minute (configurable)
 - **Keyboard Navigation**: Fast, keyboard-driven interface
+- **Comments View**: View and navigate MR comments/notes
 
 ## Installation
 
@@ -35,8 +36,13 @@ token = "glpat-xxxxxxxxxxxxxxxxxxxx"
 instance_url = "https://gitlab.com"
 
 [app]
-# Auto-refresh interval in seconds (default: 30)
+# UI polling interval in seconds (default: 30)
+# Controls how often the app checks for keyboard input and ticks
 refresh_interval = 30
+
+# Automatic data refresh interval in minutes (default: 1)
+# The app will automatically refresh all MR/pipeline/job data at this interval
+auto_refresh_interval_minutes = 1
 
 # Maximum number of MRs to track simultaneously (default: 5)
 max_tracked_mrs = 5
@@ -94,11 +100,19 @@ peeplab
 - `?`: Show help popup with all keyboard shortcuts
 - `q` or `Ctrl+C`: Quit the application
 - `←` / `→` or `h` / `l`: Switch between merge request tabs
-- `↑` / `↓` or `k` / `j`: Navigate jobs in the selected pipeline
+- `↑` / `↓` or `k` / `j`: Navigate jobs/comments in the current view
 - `[` / `]`: Switch between pipelines for the current MR
-- `Enter`: Open the selected job's log in your editor
-- `r`: Refresh all data
+- `Enter`: Open the selected job's log in the internal viewer
+- `c`: Toggle between jobs view and comments view
+- `r`: Manually refresh all data (also resets auto-refresh timer)
 - `d`: Remove the current MR from tracking
+- `o`: Open the current MR in your default browser
+
+**In Log Viewer:**
+- `/`: Start search
+- `n` / `N`: Next/previous search result
+- `t`: Toggle timestamp display mode
+- `q` or `Esc`: Close log viewer
 
 **Tip:** Press `?` at any time to see the help popup with all available commands!
 
@@ -124,8 +138,9 @@ Set `focus_current_branch = false` in your config file's `[app]` section.
 1. **Launch**: The app loads your configuration and fetches merge requests (for your current branch if focus mode is enabled)
 2. **Display**: Each MR is shown in a tab with its latest pipelines
 3. **Navigation**: Use keyboard shortcuts to navigate between MRs, pipelines, and jobs
-4. **Log Viewing**: When you press Enter on a job, it fetches the job log and opens it in your configured editor
-5. **Auto-refresh**: The app automatically refreshes pipeline statuses based on your configured interval
+4. **Log Viewing**: Press Enter on a job to view its log in the internal viewer with search and highlighting
+5. **Auto-refresh**: The app automatically refreshes all data every minute (configurable via `auto_refresh_interval_minutes`)
+6. **Manual Refresh**: Press `r` to manually refresh at any time, which also resets the auto-refresh timer
 
 ## Architecture
 
